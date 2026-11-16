@@ -4233,6 +4233,12 @@ public class MainActivity extends Activity {
      * and a row of round shortcuts. Geometry in design units: 141-wide columns, 13 gaps.
      */
     void showControlCenter() {
+        if (sceneHome != null && sceneHome.liquid != null) {
+            ControlPanelOverlay.dismiss();
+            if (sceneHome.isSheetOpen()) sceneHome.closeSheetImmediate();
+            sceneHome.liquid.control.showControlPanel(sceneHome.moonBtn, false);
+            return;
+        }
         ControlPanelOverlay.dismiss();
         dropPicker();
         stopSway(null);

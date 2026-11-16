@@ -237,7 +237,7 @@ public final class RecentAppsOverlay {
         return false;
     }
 
-    private static List<String> getRecentPackages(Context c, int maxCount) {
+    static List<String> getRecentPackages(Context c, int maxCount) {
         Set<String> result = new LinkedHashSet<>();
         String myPkg = c.getPackageName();
         SharedPreferences recSp = c.getSharedPreferences("recents", Context.MODE_PRIVATE);
@@ -1013,7 +1013,7 @@ public final class RecentAppsOverlay {
         } catch (Exception ignored) { }
     }
 
-    private static void removeAndKillApp(Context c, String pkg) {
+    static void removeAndKillApp(Context c, String pkg) {
         if (pkg == null || pkg.isEmpty()) return;
         long now = System.currentTimeMillis();
 

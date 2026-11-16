@@ -182,7 +182,7 @@ final class SceneHome {
 
     /** A Liquid Glass surface for one part of the interface (Liquid.DOCK, BUTTONS, ...). */
     GlassPanel liquidGlass(String part, float radius) {
-        return new GlassPanel(liquidSource, Liquid.look(host, part), radius, host.screenW, host.screenH, host.unit);
+        return new GlassPanel(liquidSource, Liquid.look(host, part), radius, host.screenW, host.screenH, host.unit, part);
     }
 
     /**
@@ -1938,7 +1938,8 @@ final class SceneHome {
                 return;
             }
             if (isGear) {
-                showGearSheet(v);
+                if (liquid != null) liquid.control.showLookAndFeel(v);
+                else showGearSheet(v);
             } else if (isMore) {
                 if (liquid != null) liquid.showAllApps(v);
                 else showOtherAppsSheet(v);

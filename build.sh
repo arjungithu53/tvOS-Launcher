@@ -24,7 +24,7 @@ rm -rf build && mkdir -p build/gen build/classes build/dex
 "$BT/aapt2" link -o build/unsigned.apk -I "$JAR" --manifest AndroidManifest.xml \
     -A assets --java build/gen --min-sdk-version 24 --target-sdk-version 34 \
     --rename-manifest-package io.github.arjungithu53.tvosglass \
-    --version-code "${VERSION_CODE:-1601}" --version-name "${VERSION_NAME:-2.2.0-glass.4}" build/res.zip
+    --version-code "${VERSION_CODE:-1601}" --version-name "${VERSION_NAME:-2.2.0-glass.6}" build/res.zip
 
 javac -encoding UTF-8 --release 11 -classpath "$JAR" \
     -d build/classes $(find src build/gen -name '*.java')

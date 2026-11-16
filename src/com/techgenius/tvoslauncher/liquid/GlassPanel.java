@@ -67,6 +67,29 @@ public final class GlassPanel extends Drawable {
     private final Paint fxP = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Path clipPath = new android.graphics.Path();
 
+    /** The part this surface belongs to (Liquid.DOCK, ...), or null for one-off looks. */
+    public String part;
+    private static final java.util.List<java.lang.ref.WeakReference<GlassPanel>> LIVE = new java.util.ArrayList<>();
+
+    /** Live preview: gives every part-based surface its current look. */
+    public static void relookAll(android.content.Context c) {
+        java.util.Iterator<java.lang.ref.WeakReference<GlassPanel>> it = LIVE.iterator();
+        while (it.hasNext()) {
+            GlassPanel g = it.next().get();
+            if (g == null) {
+                it.remove();
+                continue;
+            }
+            if (g.part != null) g.setLook(Liquid.look(c, g.part));
+        }
+    }
+
+    public GlassPanel(Source source, Liquid.Look look, float radius, int screenW, int screenH, float density, String part) {
+        this(source, look, radius, screenW, screenH, density);
+        this.part = part;
+        LIVE.add(new java.lang.ref.WeakReference<>(this));
+    }
+
     public GlassPanel(Source source, Liquid.Look look, float radius, int screenW, int screenH, float density) {
         this.source = source;
         this.radius = radius;

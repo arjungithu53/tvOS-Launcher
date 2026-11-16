@@ -89,9 +89,12 @@ final class LiquidHome {
         }
     };
 
+    final LiquidControl control;
+
     LiquidHome(SceneHome sh) {
         this.sh = sh;
         this.host = sh.host;
+        this.control = new LiquidControl(this);
         sh.sceneView.setNoClock(true);
         buildClock();
         buildWidgets();
@@ -114,7 +117,7 @@ final class LiquidHome {
         host.handler.post(tick);
     }
 
-    private int dp(float u) {
+    int dp(float u) {
         return host.dp(u);
     }
 
@@ -176,11 +179,11 @@ final class LiquidHome {
 
     // ================================================================== widgets
 
-    private GlassPanel glass(String part, float r) {
+    GlassPanel glass(String part, float r) {
         return sh.liquidGlass(part, r);
     }
 
-    private TextView text(float size, String weight, int color) {
+    TextView text(float size, String weight, int color) {
         TextView t = new TextView(host);
         Ui.textSize(t, size);
         t.setTypeface(Ui.font(host, weight));
@@ -191,7 +194,7 @@ final class LiquidHome {
         return t;
     }
 
-    private GradientDrawable ring(float r) {
+    GradientDrawable ring(float r) {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(r);
         g.setColor(Color.TRANSPARENT);
@@ -452,7 +455,7 @@ final class LiquidHome {
         return null;
     }
 
-    private String appLabel(String pkg) {
+    String appLabel(String pkg) {
         MainActivity.AppEntry e = entryFor(pkg);
         if (e != null && e.label != null) return e.label;
         try {
@@ -462,7 +465,7 @@ final class LiquidHome {
         }
     }
 
-    private MainActivity.AppEntry entryFor(String pkg) {
+    MainActivity.AppEntry entryFor(String pkg) {
         if (pkg == null) return null;
         for (MainActivity.AppEntry e : host.all.values()) if (pkg.equals(e.pkg)) return e;
         return null;
@@ -1163,15 +1166,16 @@ final class LiquidHome {
         sh.overlay.addView(badge, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(14)));
         if (sh.moonBtn != null) {
             sh.moonBtn.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> placeBadge());
+            sh.moonBtn.setOnClickListener(v -> control.showControlPanel(v, false));
             sh.moonBtn.setOnLongClickListener(v -> {
-                showNotifications(v);
+                control.showControlPanel(v, true);
                 return true;
             });
         }
         Notifs.listener = posted -> {
             updateBadge();
             if (posted != null && host.resumed && sh.sheetLayer == null && infoLayer == null && saverLayer == null) showBanner(posted);
-            if (notifList != null && sh.sheetLayer != null) fillNotifications(0);
+            control.onNotifsChanged();
         };
         updateBadge();
     }
@@ -1242,169 +1246,9 @@ final class LiquidHome {
         }, 4500);
     }
 
-    private LinearLayout notifList;
-    private final List<View> notifRows = new ArrayList<>();
-
-    /** Glass panel on the right listing notifications: OK opens, hold OK for options, Clear all. */
+    /** The notifications list lives in the Control Panel. */
     void showNotifications(View returnTo) {
-        if (sh.sheetLayer != null) return;
-        FrameLayout layer = new FrameLayout(host);
-        layer.setClickable(true);
-        layer.setBackgroundColor(0x66060810);
-        LinearLayout panel = new LinearLayout(host);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(18), dp(18), dp(14));
-        Liquid.Look l = Liquid.look(host, Liquid.PANEL);
-        l.trans = Math.min(l.trans, 50);
-        panel.setBackground(new GlassPanel(sh.liquidSource, l, dp(22), host.screenW, host.screenH, host.unit));
-        LinearLayout head = new LinearLayout(host);
-        head.setOrientation(LinearLayout.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text(16f, "display", Color.WHITE);
-        title.setText("Notifications");
-        head.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView clear = text(9.5f, "semibold", Color.WHITE);
-        clear.setText("Clear all");
-        clear.setGravity(Gravity.CENTER);
-        clear.setPadding(dp(12), dp(6), dp(12), dp(6));
-        GlassPanel cg = glass(Liquid.BUTTONS, dp(13));
-        clear.setBackground(cg);
-        clear.setFocusable(true);
-        clear.setClickable(true);
-        clear.setOnFocusChangeListener((v, has) -> {
-            cg.setLit(has);
-            clear.setForeground(has ? ring(dp(13)) : null);
-        });
-        clear.setOnClickListener(v -> {
-            Notifs.clearAll(host);
-            host.handler.postDelayed(() -> fillNotifications(0), 300);
-        });
-        head.addView(clear);
-        panel.addView(head);
-        ScrollView sv = new ScrollView(host);
-        sv.setVerticalScrollBarEnabled(false);
-        notifList = new LinearLayout(host);
-        notifList.setOrientation(LinearLayout.VERTICAL);
-        sv.addView(notifList);
-        LinearLayout.LayoutParams svl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        svl.topMargin = dp(12);
-        panel.addView(sv, svl);
-        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
-        pl.setMargins(0, dp(24), dp(24), dp(24));
-        layer.addView(panel, pl);
-        sh.sheetLayer = layer;
-        sh.sheetReturnFocus = returnTo;
-        sh.overlay.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
-        host.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        layer.setAlpha(0f);
-        panel.setTranslationX(dp(40));
-        layer.animate().alpha(1f).setDuration(180).start();
-        panel.animate().translationX(0).setDuration(260).setInterpolator(MainActivity.LIFT).start();
-        notifClear = clear;
-        fillNotifications(0);
-        Notifs.markSeen(host);
-        updateBadge();
-    }
-
-    private View notifClear;
-
-    private void fillNotifications(int focusIdx) {
-        if (notifList == null) return;
-        notifList.removeAllViews();
-        notifRows.clear();
-        List<Notifs.Item> items = Notifs.list(host);
-        if (items.isEmpty()) {
-            TextView e = text(10.5f, "regular", 0xB3FFFFFF);
-            e.setSingleLine(false);
-            e.setText(Notifs.available() ? "No notifications" : "Notifications need notification access for the launcher.");
-            notifList.addView(e);
-            if (notifClear != null) notifClear.post(notifClear::requestFocus);
-            return;
-        }
-        for (Notifs.Item it : items) {
-            LinearLayout r = new LinearLayout(host);
-            r.setOrientation(LinearLayout.HORIZONTAL);
-            r.setPadding(dp(10), dp(9), dp(10), dp(9));
-            r.setFocusable(true);
-            r.setClickable(true);
-            r.setLongClickable(true);
-            GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(14));
-            bg.setColor(0x14FFFFFF);
-            r.setBackground(bg);
-            ImageView iv = new ImageView(host);
-            sh.applyLiquidIconTo(iv, entryFor(it.pkg), dp(26));
-            r.addView(iv, new LinearLayout.LayoutParams(dp(26), dp(26)));
-            LinearLayout col = new LinearLayout(host);
-            col.setOrientation(LinearLayout.VERTICAL);
-            TextView top = text(8f, "semibold", 0xC8FFFFFF);
-            top.setText(appName(it.pkg).toUpperCase(Locale.ENGLISH) + "  ·  " + ago(it.time));
-            TextView t = text(10.5f, "semibold", Color.WHITE);
-            t.setText(it.title.isEmpty() ? it.text : it.title);
-            TextView x = text(9f, "regular", 0xCCFFFFFF);
-            x.setSingleLine(false);
-            x.setMaxLines(2);
-            x.setText(it.title.isEmpty() ? "" : it.text);
-            col.addView(top);
-            col.addView(t);
-            if (!it.title.isEmpty() && !it.text.isEmpty()) col.addView(x);
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            cl.leftMargin = dp(9);
-            r.addView(col, cl);
-            r.setOnFocusChangeListener((v, has) -> bg.setColor(has ? 0x40FFFFFF : 0x14FFFFFF));
-            final int idx = notifRows.size();
-            r.setOnClickListener(v -> openNotification(it));
-            r.setOnLongClickListener(v -> {
-                List<String> labels = new ArrayList<>();
-                List<Runnable> acts = new ArrayList<>();
-                labels.add("Open");
-                acts.add(() -> openNotification(it));
-                if (it.clearable) {
-                    labels.add("Dismiss");
-                    acts.add(() -> {
-                        Notifs.dismiss(it.key);
-                        host.handler.postDelayed(() -> fillNotifications(idx), 250);
-                    });
-                }
-                labels.add("Turn off for " + appName(it.pkg));
-                acts.add(() -> {
-                    Notifs.mute(host, it.pkg);
-                    fillNotifications(idx);
-                    updateBadge();
-                });
-                host.showMenu(v, it.title.isEmpty() ? appName(it.pkg) : it.title, labels, acts, -1);
-                return true;
-            });
-            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rl.bottomMargin = dp(6);
-            notifList.addView(r, rl);
-            notifRows.add(r);
-        }
-        View target = notifRows.get(Math.max(0, Math.min(focusIdx, notifRows.size() - 1)));
-        target.post(target::requestFocus);
-    }
-
-    private void openNotification(Notifs.Item it) {
-        sh.closeSheetImmediate();
-        notifList = null;
-        try {
-            if (it.open != null) {
-                it.open.send();
-                if (it.clearable) Notifs.dismiss(it.key);
-                return;
-            }
-        } catch (Throwable ignored) {
-        }
-        MainActivity.AppEntry e = entryFor(it.pkg);
-        if (e != null) host.launchAnimated(null, e);
-    }
-
-    private static String ago(long t) {
-        long m = Math.max(0, (System.currentTimeMillis() - t) / 60000);
-        if (m < 1) return "now";
-        if (m < 60) return m + " min";
-        if (m < 1440) return (m / 60) + " h";
-        return (m / 1440) + " d";
+        control.showControlPanel(returnTo, true);
     }
 
     // ================================================================== screensaver
