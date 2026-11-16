@@ -976,23 +976,34 @@ public class SettingsActivity extends Activity {
      */
     void pageLookAndScenes() {
         boolean scenesLook = Scenes.isScenesLook(this);
+        boolean liquidOn = com.techgenius.tvoslauncher.liquid.Liquid.isOn(this);
 
         section(tr("LOOK", "GÖRÜNÜM"));
         choiceRow(
+                "Liquid Glass",
+                "Glass app icons and glass panels",
+                liquidOn,
+                () -> {
+                    com.techgenius.tvoslauncher.liquid.Liquid.setOn(this, true);
+                    selectSection(LOOK_SCENES, true, 0);
+                });
+        choiceRow(
                 tr("Night scenes", "Gece sahneleri"),
                 tr("A big glass clock, scenes taking turns", "Büyük cam saat, sırayla değişen sahneler"),
-                scenesLook,
+                scenesLook && !liquidOn,
                 () -> {
+                    com.techgenius.tvoslauncher.liquid.Liquid.leave(this);
                     Scenes.setLook(this, Scenes.LOOK_SCENES);
-                    selectSection(LOOK_SCENES, true, 0);
+                    selectSection(LOOK_SCENES, true, 1);
                 });
         choiceRow(
                 tr("Classic", "Klasik"),
                 tr("One photo and a grid of app banners", "Tek fotoğraf ve uygulama afişleri ızgarası"),
                 !scenesLook,
                 () -> {
+                    com.techgenius.tvoslauncher.liquid.Liquid.leave(this);
                     Scenes.setLook(this, Scenes.LOOK_CLASSIC);
-                    selectSection(LOOK_SCENES, true, 1);
+                    selectSection(LOOK_SCENES, true, 2);
                 });
 
         section(tr("HOME SCREEN WIDGETS", "ANA EKRAN WIDGET'LARI"));

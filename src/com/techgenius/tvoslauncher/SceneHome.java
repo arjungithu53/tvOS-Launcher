@@ -29,6 +29,10 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import com.techgenius.tvoslauncher.liquid.Backdrop;
+import com.techgenius.tvoslauncher.liquid.GlassIcon;
+import com.techgenius.tvoslauncher.liquid.GlassPanel;
+import com.techgenius.tvoslauncher.liquid.Liquid;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -132,8 +136,10 @@ final class SceneHome {
             if (bg != null && Scenes.isScenesLook(host)) {
                 host.io.execute(() -> {
                     Bitmap blurred = Ui.glassBackdrop(bg, 192, 108);
+                    Bitmap sharp = Liquid.isOn(host) ? Backdrop.make(bg) : null;
                     host.handler.post(() -> {
                         if (blurred != null && Scenes.isScenesLook(host)) {
+                            Backdrop.set(sharp);
                             host.glassBg = blurred;
                             host.invalidateGlass();
                             invalidateSceneGlass();
@@ -157,8 +163,65 @@ final class SceneHome {
         watchPopups.add(new WatchPopup(this, stremioCloud));
     }
 
+    // ---------------------------------------------------------------- Liquid Glass
+
+    /** The wallpaper copies every Liquid Glass surface samples. */
+    final GlassPanel.Source liquidSource = new GlassPanel.Source() {
+        @Override public Bitmap sharp() {
+            return Backdrop.sharp();
+        }
+
+        @Override public Bitmap blurred() {
+            return host.glassBg;
+        }
+    };
+
+    /** A Liquid Glass surface for one part of the interface (Liquid.DOCK, BUTTONS, ...). */
+    GlassPanel liquidGlass(String part, float radius) {
+        return new GlassPanel(liquidSource, Liquid.look(host, part), radius, host.screenW, host.screenH, host.unit);
+    }
+
+    /**
+     * Gives a dock tile its Liquid Glass icon. Icons are drawn once and cached; a tile without a
+     * cached icon gets it a moment later (one per frame), so opening Home never stalls.
+     */
+    private void applyLiquidIcon(FrameLayout tile, MainActivity.AppEntry a, boolean isGear, boolean isMore, int size) {
+        final int s = Math.max(96, Math.min(256, Math.round(size * 1.25f)));
+        final String id = isGear ? GEAR_KEY : isMore ? MORE_KEY : (a.key != null ? a.key : a.pkg);
+        final String key = id + "|" + Liquid.iconSignature(host) + "|" + s;
+        Bitmap hit = GlassIcon.cached(key);
+        if (hit != null) {
+            tile.setBackground(new BitmapDrawable(host.getResources(), hit));
+            return;
+        }
+        tile.setBackground(null);
+        host.handler.post(() -> {
+            if (!Liquid.isOn(host)) return;
+            Bitmap b = GlassIcon.cached(key);
+            if (b == null) {
+                String style = Liquid.iconStyle(host);
+                int depth = Liquid.iconDepth(host), clarity = Liquid.iconClarity(host);
+                try {
+                    if (isGear) {
+                        b = GlassIcon.forGlyph(Glyphs.get("gear", 128, Color.WHITE), GlassIcon.SETTINGS, s, style, depth, clarity);
+                    } else if (isMore) {
+                        b = GlassIcon.forGlyph(Glyphs.get("apps", 128, Color.WHITE), GlassIcon.ALL_APPS, s, style, depth, clarity);
+                    } else {
+                        b = GlassIcon.forApp(getSquareAppIcon(a), a.icon, s, style, depth, clarity);
+                    }
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    b = null;
+                }
+                if (b == null) return;
+                GlassIcon.put(key, b);
+            }
+            tile.setBackground(new BitmapDrawable(host.getResources(), b));
+        });
+    }
+
     /** The continue-watching popup for a dock tile's app, or null when it has none. */
     WatchPopup watchPopupFor(String pkg) {
+        if (Liquid.isOn(host)) return null;  // not part of the Liquid Glass layout (v2)
         for (WatchPopup p : watchPopups) if (p.owns(pkg)) return p;
         return null;
     }
@@ -319,6 +382,7 @@ final class SceneHome {
             return true;
         });
 
+        if (Liquid.isOn(host)) weatherBtn.setBackground(liquidGlass(Liquid.BUTTONS, mSize / 2f));
         LinearLayout.LayoutParams wxlp = new LinearLayout.LayoutParams(mSize, mSize);
         wxlp.rightMargin = dp(10);
         topRightRow.addView(weatherBtn, wxlp);
@@ -373,6 +437,7 @@ final class SceneHome {
             return true;
         });
 
+        if (Liquid.isOn(host)) moonBtn.setBackground(liquidGlass(Liquid.BUTTONS, mSize / 2f));
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, mSize);
         topRightRow.addView(moonBtn, mlp);
@@ -585,7 +650,7 @@ final class SceneHome {
     }
 
     void showDashboard() {
-        if (dashboardBox == null || !HomeDashboard.isEnabled(host) || moreExpanded || moveDockIdx >= 0 || sheetLayer != null) {
+        if (dashboardBox == null || !HomeDashboard.isEnabled(host) || Liquid.isOn(host) || moreExpanded || moveDockIdx >= 0 || sheetLayer != null) {
             hideDashboard();
             return;
         }
@@ -759,6 +824,7 @@ final class SceneHome {
     private boolean shelfHiding;
 
     private void showShelfForPackage(View tile, String pkg) {
+        if (Liquid.isOn(host)) return;  // Keep Watching is not part of the Liquid Glass layout (v2)
         activeShelfTile = tile;
         activeShelfPkg = pkg;
         shelfHeader.setText(I18n.s(host, "Continue watching", "İzlemeye devam et"));
@@ -1374,7 +1440,7 @@ final class SceneHome {
                 dp(23), 0x541E141C, host.glassSource, host.screenW, host.screenH, host.unit);
         dockGlass.lens = dp(10);
         dockGlass.rimStrength = 0.38f;
-        dockBox.setBackground(dockGlass);
+        dockBox.setBackground(Liquid.isOn(host) ? liquidGlass(Liquid.DOCK, dp(23)) : dockGlass);
 
         dockContainer.addView(dockBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1777,11 +1843,19 @@ final class SceneHome {
                 tile.setClipToOutline(true);
             }
         }
+        boolean liquidIcon = Liquid.isOn(host) && (isGear || isMore || !CustomMedia.hasCustomAppIcon(host, a.key, a.pkg));
+        if (liquidIcon) {
+            tile.removeAllViews();
+            tile.setClipToOutline(false);
+            applyLiquidIcon(tile, a, isGear, isMore, size);
+        }
         // Zero elevation on dock tiles avoids Android's dark inner/outer shadow artifact bleeding through translucent Gear/More tiles
         tile.setElevation(0f);
 
         int glyphSize = Math.max(dp(14), Math.round(dp(26) * scale));
-        if (isGear && tile.getBackground() instanceof GradientDrawable) {
+        if (liquidIcon) {
+            // the glass icon is the whole tile
+        } else if (isGear && tile.getBackground() instanceof GradientDrawable) {
             ImageView iv = new ImageView(host);
             iv.setScaleType(ImageView.ScaleType.CENTER);
             iv.setImageBitmap(Glyphs.get("gear", glyphSize, 0xEBF4F4F6));
@@ -1800,7 +1874,7 @@ final class SceneHome {
             tile.addView(iv, host.match());
         }
 
-        Drawable focusRing = createIconFocusRingDrawable(rad, dp(2.2f), whiteCorners);
+        Drawable focusRing = liquidIcon ? null : createIconFocusRingDrawable(rad, dp(2.2f), whiteCorners);
 
         tile.setOnFocusChangeListener((v, has) -> {
             WatchPopup popup = isGear || isMore ? null : watchPopupFor(a.pkg);

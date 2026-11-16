@@ -230,6 +230,8 @@ public class MainActivity extends Activity {
     SceneHome sceneHome;
     String activeLang;
     String activeLook;
+    /** Liquid Glass layout state this activity was built with; a change rebuilds Home. */
+    boolean activeLiquid;
 
     final Runnable shelfUpdate = () -> {
         if (focusedIndex >= 0 && focusedIndex < shown.size()) {
@@ -260,7 +262,9 @@ public class MainActivity extends Activity {
         }
         focusedIndex = Math.max(0, prefs.getInt("last_classic_idx", 0));
         activeLang = I18n.getLang(this);
+        com.techgenius.tvoslauncher.liquid.Liquid.ensureDefault(this);
         activeLook = Scenes.getLook(this);
+        activeLiquid = com.techgenius.tvoslauncher.liquid.Liquid.isOn(this);
 
         android.graphics.Point size = Ui.screen(this);
         screenW = size.x;
@@ -427,7 +431,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!I18n.getLang(this).equals(activeLang) || !Scenes.getLook(this).equals(activeLook)) {
+        if (!I18n.getLang(this).equals(activeLang) || !Scenes.getLook(this).equals(activeLook)
+                || com.techgenius.tvoslauncher.liquid.Liquid.isOn(this) != activeLiquid) {
             recreate();
             return;
         }
@@ -999,6 +1004,7 @@ public class MainActivity extends Activity {
         if (scenes && sceneHome != null) {
             Bitmap bg = sceneHome.sceneView.getCurrentBgBitmap();
             if (bg != null) glassBg = Ui.glassBackdrop(bg, 192, 108);
+            if (bg != null && activeLiquid) com.techgenius.tvoslauncher.liquid.Backdrop.set(com.techgenius.tvoslauncher.liquid.Backdrop.make(bg));
             sceneHome.focusDock(sceneHome.focusedDockIdx);
         } else {
             focusIndex(focusedIndex);
