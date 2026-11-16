@@ -252,7 +252,6 @@ final class LiquidControl {
         sll.topMargin = dp(15);
         col.addView(sl, sll);
         AudioManager am = (AudioManager) host.getSystemService(Context.AUDIO_SERVICE);
-        slider(sl, "Brightness", "ambient", () -> Dimmer.level(c), v -> Dimmer.set(c, v));
         slider(sl, "Volume", "audio", () -> {
             if (am == null) return 0;
             int max = Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
@@ -658,7 +657,7 @@ final class LiquidControl {
         fillLookAndFeel(null);
     }
 
-    private static final int GLASS = 1, ICONS = 2, WEATHER = 4, NONE = 0;
+    private static final int GLASS = 1, ICONS = 2, WEATHER = 4, CLOCK = 8, NONE = 0;
 
     /** Applies a change on the spot: glass surfaces, icons, weather. */
     private void applyLive(int what) {
@@ -669,6 +668,7 @@ final class LiquidControl {
         }
         if ((what & ICONS) != 0) sh.rebuildDock();
         if ((what & WEATHER) != 0) lh.refreshWeather();
+        if ((what & CLOCK) != 0) lh.rebuildClock();
         host.activeLiquidStamp = Liquid.stamp(host);
     }
 
@@ -780,6 +780,43 @@ final class LiquidControl {
                 if (Liquid.DOCK.equals(part)) magnification();
             }
         }
+        header("Home clock");
+        String[][] faces = new String[AnalogClock.FACES.length][];
+        for (int i = 0; i < faces.length; i++) faces[i] = new String[]{AnalogClock.FACES[i], AnalogClock.FACE_NAMES[i]};
+        add(chips(faces, Liquid.clockFace(c), "face:", id -> {
+            Liquid.putString(c, "clock_face", id);
+            applyLive(CLOCK);
+            refill();
+        }));
+        intSlider("Clock size", "", "s:clocksize", () -> Liquid.clockSize(c), v -> {
+            Liquid.putInt(c, "clock_size", v);
+            applyLive(CLOCK);
+        });
+        header("Clock position");
+        add(chips(new String[][]{{"tl", "Top left"}, {"tc", "Top centre"}, {"tr", "Top right"},
+                {"cl", "Middle left"}, {"cc", "Centre"}, {"cr", "Middle right"}}, Liquid.clockPos(c), "cpos:", id -> {
+            Liquid.putString(c, "clock_pos", id);
+            applyLive(CLOCK);
+            refill();
+        }));
+        header("Day, date and time");
+        add(chips(new String[][]{{"below", "Below the clock"}, {"beside", "Beside it"}, {"hidden", "Hidden"}}, Liquid.clockTextPos(c), "tpos:", id -> {
+            Liquid.putString(c, "clock_text_pos", id);
+            applyLive(CLOCK);
+            refill();
+        }));
+        intSlider("Text size", "", "s:clocktext", () -> Liquid.clockTextSize(c), v -> {
+            Liquid.putInt(c, "clock_text_size", v);
+            applyLive(CLOCK);
+        });
+        add(chips(new String[][]{{"inter", "Inter"}, {"display", "Inter Display"}, {"antonio", "Antonio"},
+                {"bahnschrift", "Bahnschrift"}, {"varela", "Varela Round"}}, Liquid.clockFont(c), "font:", id -> {
+            Liquid.putString(c, "clock_font", id);
+            applyLive(CLOCK);
+            refill();
+        }));
+        toggle("Second hand", "Ticks once a second", "t:secs", () -> Liquid.clockSeconds(c), v -> Liquid.putBool(c, "clock_seconds", v), CLOCK);
+
         header("Extras");
         toggle("Tilt and shine", "No extra memory", "t:tilt", () -> Liquid.tilt(c), v -> Liquid.putBool(c, "tilt", v), NONE);
         toggle("Weather on glass", "Rain and frost from the forecast", "t:wx", () -> Liquid.weatherFx(c), v -> Liquid.putBool(c, "weather_fx", v), WEATHER);

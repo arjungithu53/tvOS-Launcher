@@ -374,8 +374,6 @@ public class PowerService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         instance = this;
-        Dimmer.forget();
-        handler.post(() -> Dimmer.apply(this));
         serviceConnectedElapsedMs = SystemClock.elapsedRealtime();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         try {
@@ -1013,6 +1011,19 @@ public class PowerService extends AccessibilityService {
         }
     }
 
+    private boolean settingsLongFired;
+    private final Runnable settingsLong = () -> {
+        settingsLongFired = true;
+        boolean ok = Build.VERSION.SDK_INT >= 24 && performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
+        if (!ok) ok = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
+        if (!ok) {
+            try {
+                startActivity(new android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Throwable ignored) {
+            }
+        }
+    };
+
     /** Package of the app in front, from window changes. */
     static volatile String lastForegroundPkg;
 
@@ -1071,11 +1082,25 @@ public class PowerService extends AccessibilityService {
         }
         // Liquid Glass: the remote's Settings button opens the Control Panel with the app in front
         // highlighted in Recent apps (unless the Button mapper has its own action for it).
-        if (code == KeyEvent.KEYCODE_SETTINGS && com.techgenius.tvoslauncher.liquid.Liquid.isOn(this)
-                && !ButtonMapper.isKeyCustomMapped(this, code)) {
-            if (event.getAction() == KeyEvent.ACTION_UP) {
-                final String fg = lastForegroundPkg;
-                handler.post(() -> LiquidHome.openControlPanelFor(this, fg));
+        // Short press: Control Panel. Long press: Google TV's own quick settings.
+        // This remote's Settings button has no Android key code (scan code 240, "unknown").
+        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            android.util.Log.i("tvOSKeys", "key " + code + " scan " + event.getScanCode());
+        }
+        boolean settingsKey = code == KeyEvent.KEYCODE_SETTINGS
+                || (code == KeyEvent.KEYCODE_UNKNOWN && event.getScanCode() == 240);
+        if (settingsKey && com.techgenius.tvoslauncher.liquid.Liquid.isOn(this)
+                && (code == KeyEvent.KEYCODE_UNKNOWN || !ButtonMapper.isKeyCustomMapped(this, code))) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                settingsLongFired = false;
+                handler.removeCallbacks(settingsLong);
+                handler.postDelayed(settingsLong, 600);
+            } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                handler.removeCallbacks(settingsLong);
+                if (!settingsLongFired) {
+                    final String fg = lastForegroundPkg;
+                    handler.post(() -> LiquidHome.openControlPanelFor(this, fg));
+                }
             }
             return true;
         }

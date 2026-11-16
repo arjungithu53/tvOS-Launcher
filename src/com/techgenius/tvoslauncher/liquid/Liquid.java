@@ -240,6 +240,40 @@ public final class Liquid {
         return prefs(c).getInt("saver_after", 5);
     }
 
+    // ------------------------------------------------------------------ home clock
+
+    public static String clockFace(Context c) {
+        return prefs(c).getString("clock_face", "liquid");
+    }
+
+    /** 0..100: about 80 to 240 design units across. */
+    public static int clockSize(Context c) {
+        return prefs(c).getInt("clock_size", 50);
+    }
+
+    /** t|c (top or middle) + l|c|r. */
+    public static String clockPos(Context c) {
+        return prefs(c).getString("clock_pos", "tl");
+    }
+
+    public static int clockTextSize(Context c) {
+        return prefs(c).getInt("clock_text_size", 50);
+    }
+
+    /** inter, display, antonio, bahnschrift, varela. */
+    public static String clockFont(Context c) {
+        return prefs(c).getString("clock_font", "inter");
+    }
+
+    /** below, beside, hidden. */
+    public static String clockTextPos(Context c) {
+        return prefs(c).getString("clock_text_pos", "below");
+    }
+
+    public static boolean clockSeconds(Context c) {
+        return prefs(c).getBoolean("clock_seconds", true);
+    }
+
     /** Changes when any icon setting changes, so cached icons can be rebuilt. */
     public static String iconSignature(Context c) {
         return iconStyle(c) + "/" + iconDepth(c) + "/" + iconClarity(c);

@@ -154,40 +154,91 @@ final class LiquidHome {
 
     // ================================================================== clock
 
+    private FrameLayout clockBox;
+
+    /** The home clock: an analog face with the day, date and 24-hour time; all set in Look & feel. */
     private void buildClock() {
+        clockBox = new FrameLayout(host);
+        clockBox.setClipChildren(false);
+        sh.overlay.addView(clockBox, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        layoutClock();
+    }
+
+    void rebuildClock() {
+        if (clockBox == null) return;
+        clockBox.removeAllViews();
+        layoutClock();
+    }
+
+    private static String fontWeight(String f) {
+        switch (f) {
+            case "display": return "display";
+            case "antonio": return "clock";
+            case "bahnschrift": return "clock_duo";
+            case "varela": return "clock_rounded";
+            default: return "regular";
+        }
+    }
+
+    private void layoutClock() {
+        String pos = Liquid.clockPos(host), tpos = Liquid.clockTextPos(host);
+        int d = dp(80 + Liquid.clockSize(host) * 1.6f);
+        float ts = 8f + Liquid.clockTextSize(host) * 0.16f;
+        boolean beside = "beside".equals(tpos), hidden = "hidden".equals(tpos);
+        boolean right = pos.endsWith("r"), centre = pos.endsWith("c");
+
+        LinearLayout box = new LinearLayout(host);
+        box.setOrientation(beside ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        box.setGravity(beside ? Gravity.CENTER_VERTICAL : (centre ? Gravity.CENTER_HORIZONTAL : right ? Gravity.END : Gravity.START));
+        box.setClipChildren(false);
+
+        AnalogClock clock = new AnalogClock(host, Liquid.clockFace(host), Liquid.clockSeconds(host));
+        if ("liquid".equals(Liquid.clockFace(host))) clock.setBackground(sh.liquidGlass(Liquid.WIDGETS, d / 2f));
+        box.addView(clock, new LinearLayout.LayoutParams(d, d));
+
         LinearLayout col = new LinearLayout(host);
         col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(beside ? Gravity.START : (centre ? Gravity.CENTER_HORIZONTAL : right ? Gravity.END : Gravity.START));
+        String w = fontWeight(Liquid.clockFont(host));
         dateText = new TextView(host);
-        Ui.textSize(dateText, 12f);
-        dateText.setTypeface(Ui.font(host, "medium"));
-        dateText.setLetterSpacing(0.16f);
+        Ui.textSize(dateText, ts * 0.5f);
+        dateText.setTypeface(Ui.font(host, "regular".equals(w) ? "medium" : w));
+        dateText.setLetterSpacing(0.14f);
         dateText.setTextColor(0xE6FFFFFF);
-        dateText.setShadowLayer(dp(10), 0, dp(1), 0x66000000);
+        dateText.setShadowLayer(dp(8), 0, dp(1), 0x80000000);
         timeText = new TextView(host);
-        Ui.textSize(timeText, 36f);
-        timeText.setTypeface(Ui.font(host, "regular"));
-        timeText.setLetterSpacing(-0.04f);
+        Ui.textSize(timeText, ts);
+        timeText.setTypeface(Ui.font(host, w));
         timeText.setTextColor(0xFFFFFFFF);
-        timeText.setShadowLayer(dp(12), 0, dp(2), 0x59000000);
+        timeText.setShadowLayer(dp(10), 0, dp(2), 0x66000000);
         timeText.setIncludeFontPadding(false);
         col.addView(dateText);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tl.topMargin = dp(3);
+        tl.topMargin = dp(2);
         col.addView(timeText, tl);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.START);
+        if (!hidden) {
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (beside) cl.leftMargin = dp(16);
+            else cl.topMargin = dp(10);
+            box.addView(col, cl);
+        }
+
+        int g = (pos.startsWith("t") ? Gravity.TOP : Gravity.CENTER_VERTICAL)
+                | (centre ? Gravity.CENTER_HORIZONTAL : right ? Gravity.END : Gravity.START);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, g);
         lp.leftMargin = dp(60);
-        lp.topMargin = dp(48);
-        sh.overlay.addView(col, lp);
+        lp.rightMargin = dp(60);
+        lp.topMargin = pos.startsWith("t") ? dp(36) : 0;
+        if (!pos.startsWith("t")) lp.bottomMargin = dp(60);  // keep clear of the dock
+        clockBox.addView(box, lp);
         updateClock();
     }
 
     private void updateClock() {
         if (timeText == null) return;
         Date now = new Date();
-        boolean h24 = Scenes.isClock24h(host);
-        timeText.setText(new SimpleDateFormat(h24 ? "HH:mm" : "h:mm", Locale.getDefault()).format(now));
-        dateText.setText(new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now).toUpperCase(Locale.ENGLISH));
+        timeText.setText(new SimpleDateFormat("HH:mm", Locale.ENGLISH).format(now));
+        dateText.setText(new SimpleDateFormat("EEEE  ·  d MMMM", Locale.ENGLISH).format(now).toUpperCase(Locale.ENGLISH));
     }
 
     // ================================================================== widgets
