@@ -177,6 +177,7 @@ public final class AppUpdater {
                 String cleanTag = cleanVersion(tag);
                 String changelog = json.optString("body", "").trim();
                 String apkUrl = GITHUB_FALLBACK_APK;
+                boolean hasApk = false;
                 JSONArray assets = json.optJSONArray("assets");
                 if (assets != null) {
                     for (int i = 0; i < assets.length(); i++) {
@@ -186,6 +187,7 @@ public final class AppUpdater {
                         String dl = asset.optString("browser_download_url", "");
                         if (name.endsWith(".apk") && !dl.isEmpty()) {
                             apkUrl = dl;
+                            hasApk = true;
                             break;
                         }
                     }
@@ -198,7 +200,8 @@ public final class AppUpdater {
                         .apply();
                 final String finalVer = cleanTag;
                 final String finalUrl = apkUrl;
-                final boolean newer = isNewerVersion(getCurrentVersion(appCtx), cleanTag);
+                // A release is offered only once its APK is attached (the build adds it about a minute after publishing).
+                final boolean newer = hasApk && isNewerVersion(getCurrentVersion(appCtx), cleanTag);
                 checking = false;
                 if (cb != null) {
                     MAIN.post(() -> cb.onResult(true, finalVer, finalUrl, newer, null));
