@@ -41,7 +41,7 @@ jobs:
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
             export RELEASE_KEYSTORE="$RUNNER_TEMP/release.jks"
           fi
-          ./build.sh
+          bash build.sh
           rm -f "$RUNNER_TEMP/release.jks"
 
       - uses: actions/upload-artifact@v4
