@@ -818,6 +818,7 @@ public class SettingsActivity extends Activity {
         list.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         list.removeAllViews();
         refreshers.clear();
+        sliders.clear();
         showStatusMsg(null);
         mainHeadView.setText(sectionTitle(currentSection));
 
@@ -1005,6 +1006,9 @@ public class SettingsActivity extends Activity {
                     Scenes.setLook(this, Scenes.LOOK_CLASSIC);
                     selectSection(LOOK_SCENES, true, 2);
                 });
+        if (liquidOn) {
+            row("Liquid Glass look & feel", () -> "›", () -> openSubMenu("liquid_glass"));
+        }
 
         section(tr("HOME SCREEN WIDGETS", "ANA EKRAN WIDGET'LARI"));
         row(tr("Home screen widget settings", "Ana ekran widget ayarları"),
@@ -2537,7 +2541,9 @@ public class SettingsActivity extends Activity {
 
     private void renderSubMenu(String subId) {
         if (subId == null) return;
-        if ("dock_size".equals(subId)) {
+        if ("liquid_glass".equals(subId)) {
+            subMenuLiquidGlass();
+        } else if ("dock_size".equals(subId)) {
             subMenuDockSize();
         } else if ("home_dashboard".equals(subId)) {
             subMenuHomeDashboard();
@@ -2662,6 +2668,69 @@ public class SettingsActivity extends Activity {
                 .show();
         Ui.setupDialogEditText(et, dlg);
         et.requestFocus();
+    }
+
+    // ---------------------------------------------------------------- Liquid Glass look & feel
+
+    /** Rows that take Left/Right to change their value (Liquid Glass sliders). */
+    private final java.util.Map<View, java.util.function.IntConsumer> sliders = new java.util.HashMap<>();
+
+    private void lgSlider(String label, java.util.function.IntSupplier get, java.util.function.IntConsumer set) {
+        View r = row(label, () -> get.getAsInt() + "%   ‹ ›", () -> set.accept(get.getAsInt() >= 100 ? 0 : get.getAsInt() + 10));
+        sliders.put(r, d -> set.accept(Math.max(0, Math.min(100, get.getAsInt() + d * 10))));
+    }
+
+    private void lgGlassSliders(String part) {
+        String[][] items = {{"trans", "Transparency"}, {"blur", "Blur"}, {"refr", "Refraction"}, {"tint", "Tint"}, {"rim", "Rim light"}};
+        for (String[] it : items) {
+            lgSlider(it[1], () -> com.techgenius.tvoslauncher.liquid.Liquid.value(this, part, it[0]), v -> com.techgenius.tvoslauncher.liquid.Liquid.setValue(this, part, it[0], v));
+        }
+    }
+
+    private static String cap(String s) {
+        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private void subMenuLiquidGlass() {
+        final android.content.Context c = this;
+        section("GLASS");
+        row("Settings mode", () -> com.techgenius.tvoslauncher.liquid.Liquid.isAdvanced(c) ? "Advanced" : "Basic", () -> {
+            com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "mode", com.techgenius.tvoslauncher.liquid.Liquid.isAdvanced(c) ? "basic" : "advanced");
+            rebuildMainRows();
+        });
+        final java.util.List<String> styles = java.util.Arrays.asList("clear", "frosted", "tinted", "dark");
+        View st = row("Glass style", () -> {
+            String p = com.techgenius.tvoslauncher.liquid.Liquid.preset(c);
+            return ("dark".equals(p) ? "Dark glass" : cap(p)) + "   ‹ ›";
+        }, () -> com.techgenius.tvoslauncher.liquid.Liquid.applyPreset(c, styles.get((styles.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.preset(c)) + 1) % 4)));
+        sliders.put(st, d -> com.techgenius.tvoslauncher.liquid.Liquid.applyPreset(c, styles.get(((styles.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.preset(c)) + d) % 4 + 4) % 4)));
+        if (!com.techgenius.tvoslauncher.liquid.Liquid.isAdvanced(c)) {
+            lgSlider("Dock background", () -> com.techgenius.tvoslauncher.liquid.Liquid.value(c, "basic", "dock"), v -> com.techgenius.tvoslauncher.liquid.Liquid.setValue(c, "basic", "dock", v));
+            lgGlassSliders("basic");
+        } else {
+            String[][] parts = {{com.techgenius.tvoslauncher.liquid.Liquid.DOCK, "DOCK"}, {com.techgenius.tvoslauncher.liquid.Liquid.WIDGETS, "WIDGETS"},
+                    {com.techgenius.tvoslauncher.liquid.Liquid.PANEL, "PANELS (ALL APPS, APP INFO)"}, {com.techgenius.tvoslauncher.liquid.Liquid.BUTTONS, "BUTTONS"}};
+            for (String[] p : parts) {
+                section(p[1]);
+                lgSlider("Background", () -> com.techgenius.tvoslauncher.liquid.Liquid.value(c, p[0], "bg"), v -> com.techgenius.tvoslauncher.liquid.Liquid.setValue(c, p[0], "bg", v));
+                lgGlassSliders(p[0]);
+            }
+        }
+
+        section("APP ICONS");
+        row("Icon style", () -> "tile".equals(com.techgenius.tvoslauncher.liquid.Liquid.iconStyle(c)) ? "Glass on a tile" : "Glass only",
+                () -> com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "icon_style", "tile".equals(com.techgenius.tvoslauncher.liquid.Liquid.iconStyle(c)) ? "bare" : "tile"));
+        lgSlider("Glass depth", () -> com.techgenius.tvoslauncher.liquid.Liquid.iconDepth(c), v -> com.techgenius.tvoslauncher.liquid.Liquid.putInt(c, "icon_depth", v));
+        lgSlider("See-through", () -> com.techgenius.tvoslauncher.liquid.Liquid.iconClarity(c), v -> com.techgenius.tvoslauncher.liquid.Liquid.putInt(c, "icon_clarity", v));
+
+        section("DOCK");
+        final java.util.List<String> mags = java.util.Arrays.asList("off", "subtle", "strong");
+        View mg = row("Magnification", () -> cap(com.techgenius.tvoslauncher.liquid.Liquid.magnify(c)) + "   ‹ ›",
+                () -> com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "magnify", mags.get((mags.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.magnify(c)) + 1) % 3)));
+        sliders.put(mg, d -> com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "magnify", mags.get(Math.max(0, Math.min(2, mags.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.magnify(c)) + d)))));
+        row("Tilt and shine", () -> com.techgenius.tvoslauncher.liquid.Liquid.tilt(c) ? "On" : "Off", () -> com.techgenius.tvoslauncher.liquid.Liquid.putBool(c, "tilt", !com.techgenius.tvoslauncher.liquid.Liquid.tilt(c)));
+
+        infoNote("Left and Right change a value. Changes show when you go back to Home.");
     }
 
     private void subMenuDockSize() {
@@ -5799,6 +5868,18 @@ public class SettingsActivity extends Activity {
                     liftedSceneId = null;
                     rebuildMainRows();
                     focusSceneById(currentSection);
+                }
+                return true;
+            }
+        }
+
+        // Liquid Glass sliders: Left/Right change the value
+        if (inRows && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            java.util.function.IntConsumer sl = sliders.get(getCurrentFocus());
+            if (sl != null) {
+                if (down) {
+                    sl.accept(k == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+                    for (Runnable x : refreshers) x.run();
                 }
                 return true;
             }

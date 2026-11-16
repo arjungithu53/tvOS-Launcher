@@ -132,6 +132,73 @@ public final class Liquid {
         return prefs(c).getBoolean("tilt", true);
     }
 
+    // ------------------------------------------------------------------ editing (Settings)
+
+    /** Bumped on every change, so Home knows to rebuild with the new look. */
+    public static int stamp(Context c) {
+        return prefs(c).getInt("stamp", 0);
+    }
+
+    private static void bump(SharedPreferences.Editor e, Context c) {
+        e.putInt("stamp", stamp(c) + 1).apply();
+    }
+
+    public static void putInt(Context c, String key, int v) {
+        bump(prefs(c).edit().putInt(key, v), c);
+    }
+
+    public static void putString(Context c, String key, String v) {
+        bump(prefs(c).edit().putString(key, v), c);
+    }
+
+    public static void putBool(Context c, String key, boolean v) {
+        bump(prefs(c).edit().putBoolean(key, v), c);
+    }
+
+    public static int getInt(Context c, String key, int def) {
+        return prefs(c).getInt(key, def);
+    }
+
+    /** Picks a glass style and drops the hand-tuned values, so every part takes the preset's numbers. */
+    public static void applyPreset(Context c, String id) {
+        SharedPreferences.Editor e = prefs(c).edit().putString("preset", id);
+        for (String k : prefs(c).getAll().keySet()) {
+            if (k.startsWith("basic_") && !k.equals("basic_dock")) e.remove(k);
+            if (k.startsWith("adv_") && !k.endsWith("_bg")) e.remove(k);
+        }
+        bump(e, c);
+    }
+
+    /** Current value of one glass setting for a part ("basic" or a part name), for the settings rows. */
+    public static int value(Context c, String part, String what) {
+        Look l;
+        if ("basic".equals(part)) {
+            int[] pv = preset(preset(c));
+            String[] names = {"trans", "blur", "refr", "tint", "rim"};
+            for (int i = 0; i < names.length; i++) {
+                if (names[i].equals(what)) return prefs(c).getInt("basic_" + what, pv[i]);
+            }
+            if ("dock".equals(what)) return prefs(c).getInt("basic_dock", 0);
+            return 0;
+        }
+        int[] pv = preset(preset(c));
+        switch (what) {
+            case "trans": return prefs(c).getInt("adv_" + part + "_trans", pv[0]);
+            case "blur": return prefs(c).getInt("adv_" + part + "_blur", pv[1]);
+            case "refr": return prefs(c).getInt("adv_" + part + "_refr", pv[2]);
+            case "tint": return prefs(c).getInt("adv_" + part + "_tint", pv[3]);
+            case "rim": return prefs(c).getInt("adv_" + part + "_rim", pv[4]);
+            case "bg": return prefs(c).getInt("adv_" + part + "_bg", DOCK.equals(part) ? 0 : 100);
+            default: return 0;
+        }
+    }
+
+    public static void setValue(Context c, String part, String what, int v) {
+        v = Math.max(0, Math.min(100, v));
+        if ("basic".equals(part)) putInt(c, "basic_" + what, v);
+        else putInt(c, "adv_" + part + "_" + what, v);
+    }
+
     /** Changes when any icon setting changes, so cached icons can be rebuilt. */
     public static String iconSignature(Context c) {
         return iconStyle(c) + "/" + iconDepth(c) + "/" + iconClarity(c);

@@ -517,6 +517,17 @@ public final class ControlPanelOverlay {
                     }, false));
         }
 
+        // Liquid Glass on/off (in every layout, so it can be turned back on from Night Scenes or Classic)
+        capsules.add(0, new CapsuleSpec("scene", "Liquid Glass",
+                () -> com.techgenius.tvoslauncher.liquid.Liquid.isOn(c) ? I18n.s(c, "On", "Açık") : I18n.s(c, "Off", "Kapalı"),
+                v -> {
+                    boolean next = !com.techgenius.tvoslauncher.liquid.Liquid.isOn(c);
+                    com.techgenius.tvoslauncher.liquid.Liquid.setOn(c, next);
+                    dismissAll(c);
+                    MainActivity m = MainActivity.activeInstance;
+                    if (m != null && m.resumed) m.recreate();
+                }, false));
+
         for (int i = 0; i < capsules.size(); i++) {
             CapsuleSpec cs = capsules.get(i);
             int colIdx = i % 2;

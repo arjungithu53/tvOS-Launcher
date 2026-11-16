@@ -232,6 +232,7 @@ public class MainActivity extends Activity {
     String activeLook;
     /** Liquid Glass layout state this activity was built with; a change rebuilds Home. */
     boolean activeLiquid;
+    int activeLiquidStamp;
 
     final Runnable shelfUpdate = () -> {
         if (focusedIndex >= 0 && focusedIndex < shown.size()) {
@@ -265,6 +266,7 @@ public class MainActivity extends Activity {
         com.techgenius.tvoslauncher.liquid.Liquid.ensureDefault(this);
         activeLook = Scenes.getLook(this);
         activeLiquid = com.techgenius.tvoslauncher.liquid.Liquid.isOn(this);
+        activeLiquidStamp = com.techgenius.tvoslauncher.liquid.Liquid.stamp(this);
 
         android.graphics.Point size = Ui.screen(this);
         screenW = size.x;
@@ -432,7 +434,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (!I18n.getLang(this).equals(activeLang) || !Scenes.getLook(this).equals(activeLook)
-                || com.techgenius.tvoslauncher.liquid.Liquid.isOn(this) != activeLiquid) {
+                || com.techgenius.tvoslauncher.liquid.Liquid.isOn(this) != activeLiquid
+                || (activeLiquid && com.techgenius.tvoslauncher.liquid.Liquid.stamp(this) != activeLiquidStamp)) {
             recreate();
             return;
         }
