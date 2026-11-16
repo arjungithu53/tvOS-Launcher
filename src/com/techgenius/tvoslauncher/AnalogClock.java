@@ -198,40 +198,11 @@ final class AnalogClock extends View {
                 c.drawLine(cx + R * 0.035f, cy - R * 0.92f, cx + R * 0.035f, cy - R * 0.72f, q);
                 break;
             }
-            default: {  // liquid: the glass disc is the view background; a plain rim and the chosen marks
+            default: {  // liquid: the glass disc is the view background; a plain rim, no marks
                 q.setStyle(Paint.Style.STROKE);
                 q.setStrokeWidth(Math.max(1f, R * 0.012f));
                 q.setColor(0x80FFFFFF);
                 c.drawCircle(cx, cy, s / 2f - q.getStrokeWidth(), q);
-                q.setStyle(Paint.Style.FILL);
-                q.setColor(0xF2FFFFFF);
-                q.setShadowLayer(R * 0.03f, 0, R * 0.012f, 0x80000000);
-                if ("lines".equals(marks)) {
-                    q.setStyle(Paint.Style.STROKE);
-                    q.setStrokeCap(Paint.Cap.ROUND);
-                    for (int i = 0; i < 12; i++) {
-                        q.setStrokeWidth(i % 3 == 0 ? R * 0.035f : R * 0.018f);
-                        float r0 = i % 3 == 0 ? R * 0.72f : R * 0.78f;
-                        double a = Math.toRadians(i * 30 - 90);
-                        c.drawLine(cx + (float) Math.cos(a) * r0, cy + (float) Math.sin(a) * r0,
-                                cx + (float) Math.cos(a) * R * 0.86f, cy + (float) Math.sin(a) * R * 0.86f, q);
-                    }
-                } else if (!"none".equals(marks)) {
-                    Paint t = new Paint(Paint.ANTI_ALIAS_FLAG);
-                    t.setColor(0xF2FFFFFF);
-                    t.setTypeface(Ui.font(getContext(), "medium"));
-                    t.setTextAlign(Paint.Align.CENTER);
-                    t.setShadowLayer(R * 0.03f, 0, R * 0.012f, 0x80000000);
-                    boolean all = "all".equals(marks);
-                    t.setTextSize(R * (all ? 0.15f : 0.19f));
-                    for (int i = 1; i <= 12; i++) {
-                        if (!all && i % 3 != 0) continue;
-                        double a = Math.toRadians(i * 30 - 90);
-                        float x = cx + (float) Math.cos(a) * R * 0.74f;
-                        float y = cy + (float) Math.sin(a) * R * 0.74f + t.getTextSize() * 0.36f;
-                        c.drawText(String.valueOf(i), x, y, t);
-                    }
-                }
                 q.clearShadowLayer();
                 break;
             }

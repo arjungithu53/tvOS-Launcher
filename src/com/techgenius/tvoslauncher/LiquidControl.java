@@ -807,14 +807,6 @@ final class LiquidControl {
             applyLive(CLOCK);
             refill();
         }));
-        if ("liquid".equals(Liquid.clockFace(c))) {
-            add(chips(new String[][]{{"numbers", "12 · 3 · 6 · 9"}, {"all", "All numbers"}, {"lines", "Lines"}, {"none", "None"}},
-                    Liquid.clockMarks(c), "marks:", id -> {
-                        Liquid.putString(c, "clock_marks", id);
-                        applyLive(CLOCK);
-                        refill();
-                    }));
-        }
         intSlider("Clock size", "", "s:clocksize", () -> Liquid.clockSize(c), v -> {
             Liquid.putInt(c, "clock_size", v);
             applyLive(CLOCK);
