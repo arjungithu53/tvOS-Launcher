@@ -644,6 +644,24 @@ public final class RecentAppsOverlay {
         nlp.leftMargin = dp(unit, 10);
         header.addView(nameTv, nlp);
 
+        // Liquid Glass: pinned apps show a pin and survive Close All (hold OK to pin or unpin).
+        final boolean liquid = com.techgenius.tvoslauncher.liquid.Liquid.isOn(c);
+        final ImageView pinIv = new ImageView(c);
+        if (liquid) {
+            pinIv.setImageBitmap(Glyphs.get("pin", dp(unit, 14), 0xFFFFFFFF));
+            pinIv.setVisibility(isPinned(c, item.pkg) ? View.VISIBLE : View.GONE);
+            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(unit, 14), dp(unit, 14));
+            plp.leftMargin = dp(unit, 6);
+            header.addView(pinIv, 1, plp);
+            container.setLongClickable(true);
+            container.setOnLongClickListener(v -> {
+                boolean next = !isPinned(c, item.pkg);
+                setPinned(c, item.pkg, next);
+                pinIv.setVisibility(next ? View.VISIBLE : View.GONE);
+                return true;
+            });
+        }
+
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.bottomMargin = dp(unit, 12);
@@ -952,7 +970,9 @@ public final class RecentAppsOverlay {
         for (int i = lastAppIdx; i >= 0; i--) {
             final View child = activeRow.getChildAt(i);
             if (child.getTag() instanceof RecentAppItem) {
-                allPkgs.add(((RecentAppItem) child.getTag()).pkg);
+                String pkg = ((RecentAppItem) child.getTag()).pkg;
+                if (com.techgenius.tvoslauncher.liquid.Liquid.isOn(c) && isPinned(c, pkg)) continue;
+                allPkgs.add(pkg);
             }
             long delay = (long) (lastAppIdx - i) * 70L;
             MAIN.postDelayed(() -> closeSingleCard(c, child, cardW, screenH, unit, false), delay);
@@ -963,6 +983,19 @@ public final class RecentAppsOverlay {
             final Context appCtx = c.getApplicationContext();
             MAIN.postDelayed(() -> dismissAndReturnHome(appCtx), 1500L);
         }
+    }
+
+    static boolean isPinned(Context c, String pkg) {
+        return pkg != null && c.getSharedPreferences("liquid", Context.MODE_PRIVATE)
+                .getStringSet("pinned", java.util.Collections.emptySet()).contains(pkg);
+    }
+
+    static void setPinned(Context c, String pkg, boolean pin) {
+        android.content.SharedPreferences p = c.getSharedPreferences("liquid", Context.MODE_PRIVATE);
+        java.util.Set<String> s = new java.util.HashSet<>(p.getStringSet("pinned", java.util.Collections.emptySet()));
+        if (pin) s.add(pkg);
+        else s.remove(pkg);
+        p.edit().putStringSet("pinned", s).apply();
     }
 
     private static void dismissAndReturnHome(Context c) {

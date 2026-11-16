@@ -57,6 +57,16 @@ public final class GlassPanel extends Drawable {
     private float placedW = -1, placedH = -1;
     private boolean lit;
 
+    /** Weather on the glass: 0 none, 1 rain drops, 2 frost. Shared by every panel. */
+    private static int weather;
+
+    public static void setWeather(int w) {
+        weather = w;
+    }
+
+    private final Paint fxP = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.Path clipPath = new android.graphics.Path();
+
     public GlassPanel(Source source, Liquid.Look look, float radius, int screenW, int screenH, float density) {
         this.source = source;
         this.radius = radius;
@@ -174,8 +184,41 @@ public final class GlassPanel extends Drawable {
             frostP.setAlpha(Math.round(look.tint / 100f * 0.5f * 255 * look.bg / 100f));
         }
         c.drawRoundRect(box, r, r, glowP);
+        if (weather != 0 && look.bg > 0 && box.width() > 40 * density) drawWeather(c, r);
         float in = rimP.getStrokeWidth() / 2f;
         c.drawRoundRect(box.left + in, box.top + in, box.right - in, box.bottom - in, r - in, r - in, rimP);
+    }
+
+    /** Rain: a scatter of small drops (the same pattern for a panel every time). Frost: icy corners. */
+    private void drawWeather(Canvas c, float r) {
+        clipPath.reset();
+        clipPath.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
+        c.save();
+        c.clipPath(clipPath);
+        float a = look.bg / 100f;
+        if (weather == 1) {
+            java.util.Random rnd = new java.util.Random((long) (box.width() * 31 + box.height()));
+            int n = Math.max(8, Math.round(box.width() * box.height() / (900f * density * density)));
+            n = Math.min(n, 60);
+            for (int i = 0; i < n; i++) {
+                float x = box.left + rnd.nextFloat() * box.width(), y = box.top + rnd.nextFloat() * box.height();
+                float rad = (0.8f + rnd.nextFloat() * 2.2f) * density;
+                fxP.setShader(new android.graphics.RadialGradient(x - rad * 0.3f, y - rad * 0.35f, rad * 1.2f,
+                        new int[]{(Math.round(0xCC * a) << 24) | 0xFFFFFF, (Math.round(0x33 * a) << 24) | 0xFFFFFF, 0x00FFFFFF},
+                        new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
+                c.drawOval(x - rad, y - rad * 1.2f, x + rad, y + rad * 1.2f, fxP);
+            }
+        } else {
+            float w = box.width(), h = box.height();
+            fxP.setShader(new android.graphics.RadialGradient(box.left, box.top, Math.max(w, h) * 0.55f,
+                    (Math.round(0x6B * a) << 24) | 0xEBF5FF, 0x00EBF5FF, Shader.TileMode.CLAMP));
+            c.drawRect(box, fxP);
+            fxP.setShader(new android.graphics.RadialGradient(box.right, box.bottom, Math.max(w, h) * 0.5f,
+                    (Math.round(0x5C * a) << 24) | 0xEBF5FF, 0x00EBF5FF, Shader.TileMode.CLAMP));
+            c.drawRect(box, fxP);
+        }
+        fxP.setShader(null);
+        c.restore();
     }
 
     @Override public void setAlpha(int alpha) {}

@@ -2730,6 +2730,37 @@ public class SettingsActivity extends Activity {
         sliders.put(mg, d -> com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "magnify", mags.get(Math.max(0, Math.min(2, mags.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.magnify(c)) + d)))));
         row("Tilt and shine", () -> com.techgenius.tvoslauncher.liquid.Liquid.tilt(c) ? "On" : "Off", () -> com.techgenius.tvoslauncher.liquid.Liquid.putBool(c, "tilt", !com.techgenius.tvoslauncher.liquid.Liquid.tilt(c)));
 
+        section("WEATHER");
+        row("Weather on glass", () -> com.techgenius.tvoslauncher.liquid.Liquid.weatherFx(c) ? "On" : "Off",
+                () -> com.techgenius.tvoslauncher.liquid.Liquid.putBool(c, "weather_fx", !com.techgenius.tvoslauncher.liquid.Liquid.weatherFx(c)));
+
+        section("SCREENSAVER");
+        final java.util.List<String> ss = java.util.Arrays.asList("drift", "clock", "glass");
+        final String[] ssNames = {"Scene drift", "Minimal clock", "Liquid glass"};
+        View sv = row("Style", () -> ssNames[Math.max(0, ss.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.saverStyle(c)))] + "   ‹ ›",
+                () -> com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "saver_style", ss.get((ss.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.saverStyle(c)) + 1) % 3)));
+        sliders.put(sv, d -> com.techgenius.tvoslauncher.liquid.Liquid.putString(c, "saver_style", ss.get(((ss.indexOf(com.techgenius.tvoslauncher.liquid.Liquid.saverStyle(c)) + d) % 3 + 3) % 3)));
+        final int[] afters = {1, 5, 15, 0};
+        View sa = row("Start after", () -> {
+            int m = com.techgenius.tvoslauncher.liquid.Liquid.saverAfter(c);
+            return (m == 0 ? "Never" : m + " min") + "   ‹ ›";
+        }, () -> {
+            int i = 0;
+            for (int j = 0; j < afters.length; j++) if (afters[j] == com.techgenius.tvoslauncher.liquid.Liquid.saverAfter(c)) i = j;
+            com.techgenius.tvoslauncher.liquid.Liquid.putInt(c, "saver_after", afters[(i + 1) % afters.length]);
+        });
+        sliders.put(sa, d -> {
+            int i = 0;
+            for (int j = 0; j < afters.length; j++) if (afters[j] == com.techgenius.tvoslauncher.liquid.Liquid.saverAfter(c)) i = j;
+            com.techgenius.tvoslauncher.liquid.Liquid.putInt(c, "saver_after", afters[Math.max(0, Math.min(afters.length - 1, i + d))]);
+        });
+
+        section("NOTIFICATIONS");
+        row("Apps turned off", () -> {
+            int n = c.getSharedPreferences("liquid_notifs", MODE_PRIVATE).getStringSet("muted", java.util.Collections.emptySet()).size();
+            return n == 0 ? "None" : n + " · OK to turn all back on";
+        }, () -> c.getSharedPreferences("liquid_notifs", MODE_PRIVATE).edit().remove("muted").apply());
+
         infoNote("Left and Right change a value. Changes show when you go back to Home.");
     }
 

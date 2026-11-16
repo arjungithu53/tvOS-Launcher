@@ -4949,6 +4949,7 @@ public class MainActivity extends Activity {
     };
 
     void resetIdle() {
+        if (sceneHome != null && sceneHome.liquid != null) sceneHome.liquid.resetSaver();
         handler.removeCallbacks(idleRunnable);
         handler.removeCallbacks(lockIdleRunnable);
         int sec = idleSeconds();

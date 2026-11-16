@@ -199,6 +199,21 @@ public final class Liquid {
         else putInt(c, "adv_" + part + "_" + what, v);
     }
 
+    /** Rain and frost on the glass, from the forecast. */
+    public static boolean weatherFx(Context c) {
+        return prefs(c).getBoolean("weather_fx", true);
+    }
+
+    /** Screensaver style: "drift", "clock" or "glass". */
+    public static String saverStyle(Context c) {
+        return prefs(c).getString("saver_style", "drift");
+    }
+
+    /** Minutes without input before the screensaver; 0 = never. */
+    public static int saverAfter(Context c) {
+        return prefs(c).getInt("saver_after", 5);
+    }
+
     /** Changes when any icon setting changes, so cached icons can be rebuilt. */
     public static String iconSignature(Context c) {
         return iconStyle(c) + "/" + iconDepth(c) + "/" + iconClarity(c);

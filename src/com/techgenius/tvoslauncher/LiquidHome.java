@@ -110,6 +110,7 @@ final class LiquidHome {
             lp.bottomMargin = dp(40);
             sh.dockLabel.setLayoutParams(lp);
         }
+        setupNotifications();
         host.handler.post(tick);
     }
 
@@ -119,6 +120,13 @@ final class LiquidHome {
 
     void onResume() {
         refreshWeather();
+        updateBadge();
+        hideSaver();
+        resetSaver();
+        if (pendingNotifications) {
+            pendingNotifications = false;
+            host.handler.postDelayed(() -> showNotifications(null), 300);
+        }
         host.handler.removeCallbacks(tick);
         host.handler.post(tick);
     }
@@ -354,6 +362,14 @@ final class LiquidHome {
             wxHours.addView(c, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         }
         wxHours.setVisibility(n > 0 ? View.VISIBLE : View.GONE);
+        String kind = WeatherIcons.kind(d.code);
+        int fx = !Liquid.weatherFx(host) ? 0
+                : ("rain".equals(kind) || "drizzle".equals(kind) || "thunder".equals(kind)) ? 1
+                : ("snow".equals(kind) || d.temp <= 0) ? 2 : 0;
+        GlassPanel.setWeather(fx);
+        weatherCard.invalidate();
+        if (playCard != null) playCard.invalidate();
+        sh.invalidateSceneGlass();
     }
 
     private MediaController findController() {
@@ -683,6 +699,10 @@ final class LiquidHome {
     boolean dispatchKey(KeyEvent ev) {
         int k = ev.getKeyCode();
         boolean down = ev.getAction() == KeyEvent.ACTION_DOWN;
+        if (saverLayer != null) {
+            if (!down) hideSaver();
+            return true;
+        }
         if (infoLayer != null) {
             if (k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_ESCAPE) {
                 if (!down) closeInfo();
@@ -1119,5 +1139,356 @@ final class LiquidHome {
 
     boolean isInfoOpen() {
         return infoLayer != null;
+    }
+
+    // ================================================================== notifications
+
+    private TextView badge;
+    private FrameLayout banner;
+    /** Set by the Control Panel tile when it was used over another app: open the list on return. */
+    static boolean pendingNotifications;
+
+    private void setupNotifications() {
+        badge = text(8f, "semibold", Color.WHITE);
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(dp(4), 0, dp(4), 0);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(7));
+        bg.setColor(0xFFFF4D5E);
+        bg.setStroke(dp(1.5f), 0x990A0E1E);
+        badge.setBackground(bg);
+        badge.setMinWidth(dp(14));
+        badge.setVisibility(View.GONE);
+        badge.setElevation(dp(30));
+        sh.overlay.addView(badge, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(14)));
+        if (sh.moonBtn != null) {
+            sh.moonBtn.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> placeBadge());
+            sh.moonBtn.setOnLongClickListener(v -> {
+                showNotifications(v);
+                return true;
+            });
+        }
+        Notifs.listener = posted -> {
+            updateBadge();
+            if (posted != null && host.resumed && sh.sheetLayer == null && infoLayer == null && saverLayer == null) showBanner(posted);
+            if (notifList != null && sh.sheetLayer != null) fillNotifications(0);
+        };
+        updateBadge();
+    }
+
+    private void placeBadge() {
+        if (badge == null || sh.moonBtn == null) return;
+        int[] a = new int[2], o = new int[2];
+        sh.moonBtn.getLocationInWindow(a);
+        sh.overlay.getLocationInWindow(o);
+        badge.setTranslationX(a[0] - o[0] + sh.moonBtn.getWidth() - dp(10));
+        badge.setTranslationY(a[1] - o[1] - dp(3));
+    }
+
+    void updateBadge() {
+        if (badge == null) return;
+        int n = Notifs.unread(host);
+        badge.setText(n > 9 ? "9+" : String.valueOf(n));
+        badge.setVisibility(n > 0 ? View.VISIBLE : View.GONE);
+        placeBadge();
+    }
+
+    private String appName(String pkg) {
+        return appLabel(pkg);
+    }
+
+    private void showBanner(Notifs.Item it) {
+        if (banner != null) sh.overlay.removeView(banner);
+        FrameLayout b = new FrameLayout(host);
+        b.setBackground(glass(Liquid.PANEL, dp(18)));
+        b.setPadding(dp(14), dp(10), dp(16), dp(10));
+        LinearLayout row = new LinearLayout(host);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView iv = new ImageView(host);
+        sh.applyLiquidIconTo(iv, entryFor(it.pkg), dp(30));
+        row.addView(iv, new LinearLayout.LayoutParams(dp(30), dp(30)));
+        LinearLayout col = new LinearLayout(host);
+        col.setOrientation(LinearLayout.VERTICAL);
+        TextView app = text(8f, "semibold", 0xD9FFFFFF);
+        app.setLetterSpacing(0.1f);
+        app.setText(appName(it.pkg).toUpperCase(Locale.ENGLISH));
+        TextView t = text(11f, "semibold", Color.WHITE);
+        t.setText(it.title.isEmpty() ? it.text : it.title);
+        TextView x = text(9.5f, "regular", 0xD9FFFFFF);
+        x.setText(it.title.isEmpty() ? "" : it.text);
+        col.addView(app);
+        col.addView(t);
+        if (!it.title.isEmpty() && !it.text.isEmpty()) col.addView(x);
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(dp(260), ViewGroup.LayoutParams.WRAP_CONTENT);
+        cl.leftMargin = dp(10);
+        row.addView(col, cl);
+        b.addView(row);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lp.topMargin = dp(22);
+        b.setElevation(dp(40));
+        sh.overlay.addView(b, lp);
+        banner = b;
+        b.setAlpha(0f);
+        b.setTranslationY(-dp(40));
+        b.animate().alpha(1f).translationY(0).setDuration(320).setInterpolator(MainActivity.LIFT).start();
+        host.handler.postDelayed(() -> {
+            if (banner != b) return;
+            b.animate().alpha(0f).translationY(-dp(30)).setDuration(260).withEndAction(() -> {
+                sh.overlay.removeView(b);
+                if (banner == b) banner = null;
+            }).start();
+        }, 4500);
+    }
+
+    private LinearLayout notifList;
+    private final List<View> notifRows = new ArrayList<>();
+
+    /** Glass panel on the right listing notifications: OK opens, hold OK for options, Clear all. */
+    void showNotifications(View returnTo) {
+        if (sh.sheetLayer != null) return;
+        FrameLayout layer = new FrameLayout(host);
+        layer.setClickable(true);
+        layer.setBackgroundColor(0x66060810);
+        LinearLayout panel = new LinearLayout(host);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(18), dp(18), dp(14));
+        Liquid.Look l = Liquid.look(host, Liquid.PANEL);
+        l.trans = Math.min(l.trans, 50);
+        panel.setBackground(new GlassPanel(sh.liquidSource, l, dp(22), host.screenW, host.screenH, host.unit));
+        LinearLayout head = new LinearLayout(host);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text(16f, "display", Color.WHITE);
+        title.setText("Notifications");
+        head.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView clear = text(9.5f, "semibold", Color.WHITE);
+        clear.setText("Clear all");
+        clear.setGravity(Gravity.CENTER);
+        clear.setPadding(dp(12), dp(6), dp(12), dp(6));
+        GlassPanel cg = glass(Liquid.BUTTONS, dp(13));
+        clear.setBackground(cg);
+        clear.setFocusable(true);
+        clear.setClickable(true);
+        clear.setOnFocusChangeListener((v, has) -> {
+            cg.setLit(has);
+            clear.setForeground(has ? ring(dp(13)) : null);
+        });
+        clear.setOnClickListener(v -> {
+            Notifs.clearAll(host);
+            host.handler.postDelayed(() -> fillNotifications(0), 300);
+        });
+        head.addView(clear);
+        panel.addView(head);
+        ScrollView sv = new ScrollView(host);
+        sv.setVerticalScrollBarEnabled(false);
+        notifList = new LinearLayout(host);
+        notifList.setOrientation(LinearLayout.VERTICAL);
+        sv.addView(notifList);
+        LinearLayout.LayoutParams svl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        svl.topMargin = dp(12);
+        panel.addView(sv, svl);
+        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
+        pl.setMargins(0, dp(24), dp(24), dp(24));
+        layer.addView(panel, pl);
+        sh.sheetLayer = layer;
+        sh.sheetReturnFocus = returnTo;
+        sh.overlay.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        host.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        layer.setAlpha(0f);
+        panel.setTranslationX(dp(40));
+        layer.animate().alpha(1f).setDuration(180).start();
+        panel.animate().translationX(0).setDuration(260).setInterpolator(MainActivity.LIFT).start();
+        notifClear = clear;
+        fillNotifications(0);
+        Notifs.markSeen(host);
+        updateBadge();
+    }
+
+    private View notifClear;
+
+    private void fillNotifications(int focusIdx) {
+        if (notifList == null) return;
+        notifList.removeAllViews();
+        notifRows.clear();
+        List<Notifs.Item> items = Notifs.list(host);
+        if (items.isEmpty()) {
+            TextView e = text(10.5f, "regular", 0xB3FFFFFF);
+            e.setSingleLine(false);
+            e.setText(Notifs.available() ? "No notifications" : "Notifications need notification access for the launcher.");
+            notifList.addView(e);
+            if (notifClear != null) notifClear.post(notifClear::requestFocus);
+            return;
+        }
+        for (Notifs.Item it : items) {
+            LinearLayout r = new LinearLayout(host);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setPadding(dp(10), dp(9), dp(10), dp(9));
+            r.setFocusable(true);
+            r.setClickable(true);
+            r.setLongClickable(true);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(14));
+            bg.setColor(0x14FFFFFF);
+            r.setBackground(bg);
+            ImageView iv = new ImageView(host);
+            sh.applyLiquidIconTo(iv, entryFor(it.pkg), dp(26));
+            r.addView(iv, new LinearLayout.LayoutParams(dp(26), dp(26)));
+            LinearLayout col = new LinearLayout(host);
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView top = text(8f, "semibold", 0xC8FFFFFF);
+            top.setText(appName(it.pkg).toUpperCase(Locale.ENGLISH) + "  ·  " + ago(it.time));
+            TextView t = text(10.5f, "semibold", Color.WHITE);
+            t.setText(it.title.isEmpty() ? it.text : it.title);
+            TextView x = text(9f, "regular", 0xCCFFFFFF);
+            x.setSingleLine(false);
+            x.setMaxLines(2);
+            x.setText(it.title.isEmpty() ? "" : it.text);
+            col.addView(top);
+            col.addView(t);
+            if (!it.title.isEmpty() && !it.text.isEmpty()) col.addView(x);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            cl.leftMargin = dp(9);
+            r.addView(col, cl);
+            r.setOnFocusChangeListener((v, has) -> bg.setColor(has ? 0x40FFFFFF : 0x14FFFFFF));
+            final int idx = notifRows.size();
+            r.setOnClickListener(v -> openNotification(it));
+            r.setOnLongClickListener(v -> {
+                List<String> labels = new ArrayList<>();
+                List<Runnable> acts = new ArrayList<>();
+                labels.add("Open");
+                acts.add(() -> openNotification(it));
+                if (it.clearable) {
+                    labels.add("Dismiss");
+                    acts.add(() -> {
+                        Notifs.dismiss(it.key);
+                        host.handler.postDelayed(() -> fillNotifications(idx), 250);
+                    });
+                }
+                labels.add("Turn off for " + appName(it.pkg));
+                acts.add(() -> {
+                    Notifs.mute(host, it.pkg);
+                    fillNotifications(idx);
+                    updateBadge();
+                });
+                host.showMenu(v, it.title.isEmpty() ? appName(it.pkg) : it.title, labels, acts, -1);
+                return true;
+            });
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rl.bottomMargin = dp(6);
+            notifList.addView(r, rl);
+            notifRows.add(r);
+        }
+        View target = notifRows.get(Math.max(0, Math.min(focusIdx, notifRows.size() - 1)));
+        target.post(target::requestFocus);
+    }
+
+    private void openNotification(Notifs.Item it) {
+        sh.closeSheetImmediate();
+        notifList = null;
+        try {
+            if (it.open != null) {
+                it.open.send();
+                if (it.clearable) Notifs.dismiss(it.key);
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+        MainActivity.AppEntry e = entryFor(it.pkg);
+        if (e != null) host.launchAnimated(null, e);
+    }
+
+    private static String ago(long t) {
+        long m = Math.max(0, (System.currentTimeMillis() - t) / 60000);
+        if (m < 1) return "now";
+        if (m < 60) return m + " min";
+        if (m < 1440) return (m / 60) + " h";
+        return (m / 1440) + " d";
+    }
+
+    // ================================================================== screensaver
+
+    private FrameLayout saverLayer;
+    private final Runnable saverRunnable = this::showSaver;
+
+    /** Any input: restart the screensaver countdown. */
+    void resetSaver() {
+        host.handler.removeCallbacks(saverRunnable);
+        int min = Liquid.saverAfter(host);
+        if (min > 0 && host.resumed) host.handler.postDelayed(saverRunnable, min * 60_000L);
+    }
+
+    void showSaver() {
+        if (saverLayer != null || !host.resumed) return;
+        if (sh.sheetLayer != null || infoLayer != null || host.menuLayer != null || host.pickerLayer != null) {
+            resetSaver();
+            return;
+        }
+        String style = Liquid.saverStyle(host);
+        FrameLayout l = new FrameLayout(host);
+        l.setClickable(true);
+        TextView time = text("clock".equals(style) ? 64f : 48f, "regular", Color.WHITE);
+        time.setLetterSpacing(-0.04f);
+        TextView date = text(11f, "medium", 0xD9FFFFFF);
+        date.setLetterSpacing(0.16f);
+        Date now = new Date();
+        time.setText(new SimpleDateFormat(Scenes.isClock24h(host) ? "HH:mm" : "h:mm", Locale.getDefault()).format(now));
+        date.setText(new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now).toUpperCase(Locale.ENGLISH));
+        LinearLayout col = new LinearLayout(host);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.addView(date);
+        col.addView(time);
+        if ("clock".equals(style)) {
+            l.setBackgroundColor(Color.BLACK);
+            l.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+            // move a little every minute so nothing stays in one place on the panel
+            col.animate().translationX(dp(30)).translationY(dp(12)).setDuration(60_000).start();
+        } else if ("glass".equals(style)) {
+            col.setPadding(dp(34), dp(22), dp(34), dp(24));
+            Liquid.Look gl = Liquid.look(host, Liquid.WIDGETS);
+            col.setBackground(new GlassPanel(sh.liquidSource, gl, dp(28), host.screenW, host.screenH, host.unit));
+            l.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+            sh.overlay.animate().alpha(0f).setDuration(600).start();
+        } else {  // drift: the scene slowly drifts, a small clock bottom left
+            FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+            cl.leftMargin = dp(48);
+            cl.bottomMargin = dp(40);
+            col.setGravity(Gravity.START);
+            l.addView(col, cl);
+            sh.overlay.animate().alpha(0f).setDuration(600).start();
+            sh.sceneView.setPivotX(host.screenW * 0.4f);
+            sh.sceneView.setPivotY(host.screenH * 0.5f);
+            sh.sceneView.animate().scaleX(1.12f).scaleY(1.12f).translationX(-dp(20)).setDuration(90_000)
+                    .setInterpolator(new android.view.animation.LinearInterpolator()).start();
+        }
+        saverLayer = l;
+        host.root.addView(l, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        l.setAlpha(0f);
+        l.animate().alpha(1f).setDuration(800).start();
+        // keep the clock current
+        host.handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (saverLayer != l) return;
+                time.setText(new SimpleDateFormat(Scenes.isClock24h(host) ? "HH:mm" : "h:mm", Locale.getDefault()).format(new Date()));
+                host.handler.postDelayed(this, 15_000);
+            }
+        }, 15_000);
+    }
+
+    void hideSaver() {
+        if (saverLayer == null) return;
+        FrameLayout l = saverLayer;
+        saverLayer = null;
+        sh.sceneView.animate().cancel();
+        sh.sceneView.animate().scaleX(1f).scaleY(1f).translationX(0).setDuration(400).start();
+        sh.overlay.animate().alpha(1f).setDuration(300).start();
+        l.animate().alpha(0f).setDuration(300).withEndAction(() -> host.root.removeView(l)).start();
+        resetSaver();
+    }
+
+    boolean isSaverShowing() {
+        return saverLayer != null;
     }
 }

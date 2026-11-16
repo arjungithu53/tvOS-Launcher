@@ -528,6 +528,28 @@ public final class ControlPanelOverlay {
                     if (m != null && m.resumed) m.recreate();
                 }, false));
 
+        if (com.techgenius.tvoslauncher.liquid.Liquid.isOn(c)) {
+            capsules.add(1, new CapsuleSpec("info", I18n.s(c, "Notifications", "Bildirimler"),
+                    () -> {
+                        int n = Notifs.unread(c);
+                        return n > 0 ? n + " new" : (Notifs.list(c).isEmpty() ? "None" : "No new");
+                    },
+                    v -> {
+                        dismissAll(c);
+                        MainActivity m = MainActivity.activeInstance;
+                        if (m != null && m.resumed && m.sceneHome != null && m.sceneHome.liquid != null) {
+                            m.sceneHome.liquid.showNotifications(null);
+                        } else {
+                            LiquidHome.pendingNotifications = true;
+                            Intent home = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                            try {
+                                c.startActivity(home);
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    }, false));
+        }
+
         for (int i = 0; i < capsules.size(); i++) {
             CapsuleSpec cs = capsules.get(i);
             int colIdx = i % 2;

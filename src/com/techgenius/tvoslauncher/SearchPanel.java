@@ -108,7 +108,7 @@ final class SearchPanel {
         layer = new FrameLayout(a);
         layer.setClickable(true);
         layer.setClipChildren(false);
-        a.addBlurredBackdrop(layer, 0xD9000000);
+        a.addBlurredBackdrop(layer, com.techgenius.tvoslauncher.liquid.Liquid.isOn(a) ? 0x8C060A18 : 0xD9000000);
 
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
