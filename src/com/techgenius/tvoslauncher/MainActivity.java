@@ -470,6 +470,7 @@ public class MainActivity extends Activity {
             sceneHome.refreshMoonBtn();
             sceneHome.refreshKeepWatching();
             sceneHome.refreshDashboard();
+            if (sceneHome.liquid != null) sceneHome.liquid.onResume();
             if (wasReturningFromSettings || sceneHome.dockTiles.isEmpty()) {
                 sceneHome.rebuildDock();
             }
@@ -5076,6 +5077,7 @@ public class MainActivity extends Activity {
             sceneHome.refreshWeatherBtn();
             if (d != null) {
                 sceneHome.sceneView.setWeather(d.temp + "\u00b0", Weather.describe(this, d.code, d.day), d.code);
+                if (sceneHome.liquid != null) sceneHome.liquid.refreshWeather();
             } else {
                 sceneHome.sceneView.setWeather(null, null, -1);
             }

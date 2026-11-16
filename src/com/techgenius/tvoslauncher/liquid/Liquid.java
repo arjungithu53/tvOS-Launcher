@@ -122,6 +122,16 @@ public final class Liquid {
         return prefs(c).getInt("icon_clarity", 0);
     }
 
+    /** Dock magnification: "off", "subtle" or "strong". */
+    public static String magnify(Context c) {
+        return prefs(c).getString("magnify", "strong");
+    }
+
+    /** Tilt and shine on the focused dock icon. */
+    public static boolean tilt(Context c) {
+        return prefs(c).getBoolean("tilt", true);
+    }
+
     /** Changes when any icon setting changes, so cached icons can be rebuilt. */
     public static String iconSignature(Context c) {
         return iconStyle(c) + "/" + iconDepth(c) + "/" + iconClarity(c);

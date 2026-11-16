@@ -976,6 +976,15 @@ public final class Scenes {
         private int weatherCode = -1;
         private boolean lockScreenMode = false;
         private boolean classicClockOnlyMode = false;
+        /** Liquid Glass layout: the scene only, without the big clock, date and greeting. */
+        private boolean noClock = false;
+
+        public void setNoClock(boolean v) {
+            if (noClock == v) return;
+            noClock = v;
+            cachedFrameKey = null;
+            invalidate();
+        }
         private int folderFlipCounter = 0;
 
         private final Paint bmpPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -1618,7 +1627,7 @@ public final class Scenes {
                             + CustomMedia.getRedditWallpaperTimestamp(ctx, CustomMedia.SCOPE_SCENE) + "|"
                             + (classicWallBmp != null && !classicWallBmp.isRecycled() ? classicWallBmp.getGenerationId() : 0) + "|"
                             + CustomMedia.getCustomLockTimestamp(ctx) + "|"
-                            + buildGreeting(ctx) + "|" + w + "x" + h;
+                            + buildGreeting(ctx) + "|" + w + "x" + h + "|" + noClock;
                     if (!frameKey.equals(cachedFrameKey) || cachedFrameBmp == null
                             || cachedFrameBmp.getWidth() != w || cachedFrameBmp.getHeight() != h) {
                         if (cachedFrameBmp == null || cachedFrameBmp.getWidth() != w || cachedFrameBmp.getHeight() != h) {
@@ -1664,6 +1673,12 @@ public final class Scenes {
                             new float[]{0f, 0.60f, 1f}, Shader.TileMode.CLAMP));
                 }
                 canvas.drawRect(0, 0, w, h, shadePaint);
+            }
+
+            // Liquid Glass draws its own small clock instead.
+            if (noClock) {
+                if (layerSave) canvas.restore();
+                return;
             }
 
             // 3. Giant Glass Clock (iPhone Duo / Rounded / Tall Glass)

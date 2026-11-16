@@ -161,7 +161,11 @@ final class SceneHome {
         stremioCloud = new StremioCloud(host);
         watchPopups.add(new WatchPopup(this, nuvioCloud));
         watchPopups.add(new WatchPopup(this, stremioCloud));
+        if (Liquid.isOn(host)) liquid = new LiquidHome(this);
     }
+
+    /** The Liquid Glass home on top of this one, or null in Night Scenes / Classic. */
+    LiquidHome liquid;
 
     // ---------------------------------------------------------------- Liquid Glass
 
@@ -185,7 +189,18 @@ final class SceneHome {
      * Gives a dock tile its Liquid Glass icon. Icons are drawn once and cached; a tile without a
      * cached icon gets it a moment later (one per frame), so opening Home never stalls.
      */
-    private void applyLiquidIcon(FrameLayout tile, MainActivity.AppEntry a, boolean isGear, boolean isMore, int size) {
+    /** A glass icon (or the Icon Changer icon) as the background of any view. */
+    void applyLiquidIconTo(View v, MainActivity.AppEntry a, int size) {
+        if (a == null) return;
+        if (CustomMedia.hasCustomAppIcon(host, a.key, a.pkg)) {
+            Bitmap sq = getSquareAppIcon(a);
+            if (sq != null) v.setBackground(createSmoothSquircleDrawable(sq, size * 0.22f, 1f, 0xFF141519));
+            return;
+        }
+        applyLiquidIcon(v, a, GEAR_KEY.equals(a.key), MORE_KEY.equals(a.key), size);
+    }
+
+    private void applyLiquidIcon(View tile, MainActivity.AppEntry a, boolean isGear, boolean isMore, int size) {
         final int s = Math.max(96, Math.min(256, Math.round(size * 1.25f)));
         final String id = isGear ? GEAR_KEY : isMore ? MORE_KEY : (a.key != null ? a.key : a.pkg);
         final String key = id + "|" + Liquid.iconSignature(host) + "|" + s;
@@ -485,7 +500,7 @@ final class SceneHome {
 
     void refreshWeatherBtn() {
         if (weatherBtn == null) return;
-        boolean show = isWeatherShortcutEnabled(host) && Weather.enabled(host);
+        boolean show = Liquid.isOn(host) || (isWeatherShortcutEnabled(host) && Weather.enabled(host));
         weatherBtn.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
@@ -1717,9 +1732,9 @@ final class SceneHome {
 
         int maxDockInnerW = Math.max(tileSize * 4, host.screenW - dp(72) - 2 * padH);
         int maxColsFit = Math.max(4, (maxDockInnerW + tileGap) / (tileSize + tileGap));
-        int cols = Math.min(12, maxColsFit);
+        int cols = liquid != null ? 1000 : Math.min(12, maxColsFit);  // Liquid Glass: one scrolling row
         currentDockCols = cols;
-        int dockRows = Scenes.getDockRows(host);
+        int dockRows = liquid != null ? 1 : Scenes.getDockRows(host);
         int totalSlots = cols * dockRows;
 
         // Collect installed apps for Home and Other Apps
@@ -1746,7 +1761,7 @@ final class SceneHome {
 
         // Determine if Other Apps (...) button is needed:
         // Hidden when otherPool is empty AND all homePool apps + Gear fit in totalSlots.
-        boolean hasAnyOtherOrOverflow = !otherPool.isEmpty() || (homePool.size() + 1 > totalSlots);
+        boolean hasAnyOtherOrOverflow = liquid != null || !otherPool.isEmpty() || (homePool.size() + 1 > totalSlots);
 
         int maxDockApps = hasAnyOtherOrOverflow ? Math.max(1, totalSlots - 2) : Math.max(1, totalSlots - 1);
         currentMaxSingleRowApps = maxDockApps;
@@ -1764,7 +1779,7 @@ final class SceneHome {
         if (hasAnyOtherOrOverflow) {
             MainActivity.AppEntry moreEntry = new MainActivity.AppEntry();
             moreEntry.key = MORE_KEY;
-            moreEntry.label = I18n.s(host, "Other apps", "Diğer uygulamalar");
+            moreEntry.label = liquid != null ? "All apps" : I18n.s(host, "Other apps", "Diğer uygulamalar");
             dockEntries.add(moreEntry);
         }
 
@@ -1788,6 +1803,7 @@ final class SceneHome {
             dockTiles.add(tile);
         }
         focusedDockIdx = Math.max(0, Math.min(savedFocusIdx, dockTiles.size() - 1));
+        if (liquid != null) liquid.afterDockBuilt();
         dockBox.requestLayout();
         dockBox.invalidate();
         if (dockContainer != null) {
@@ -1880,9 +1896,11 @@ final class SceneHome {
             WatchPopup popup = isGear || isMore ? null : watchPopupFor(a.pkg);
             if (popup != null) popup.onTileFocus(v, a.pkg, has && moveDockIdx < 0);
             onDockTileFocusForShelf(v, a, isGear, isMore, popup, has);
-            v.setPivotX(v.getWidth() > 0 ? v.getWidth() / 2f : size / 2f);
-            v.setPivotY(v.getHeight() > 0 ? v.getHeight() / 2f : size / 2f);
-            v.setForeground(has ? focusRing : null);
+            if (liquid == null) {
+                v.setPivotX(v.getWidth() > 0 ? v.getWidth() / 2f : size / 2f);
+                v.setPivotY(v.getHeight() > 0 ? v.getHeight() / 2f : size / 2f);
+                v.setForeground(has ? focusRing : null);
+            }
             if (has) {
                 focusedDockIdx = index;
                 host.prefs.edit().putInt("last_dock_idx", index).apply();
@@ -1893,13 +1911,21 @@ final class SceneHome {
                 } else {
                     updateDockTooltip(v, a.label);
                 }
-                v.animate().scaleX(1.13f).scaleY(1.13f)
-                        .translationY(0f)
-                        .setDuration(190).setInterpolator(MainActivity.LIFT).start();
+                if (liquid != null) {
+                    liquid.onDockFocus(index, true);
+                } else {
+                    v.animate().scaleX(1.13f).scaleY(1.13f)
+                            .translationY(0f)
+                            .setDuration(190).setInterpolator(MainActivity.LIFT).start();
+                }
             } else {
-                v.animate().scaleX(1f).scaleY(1f)
-                        .translationY(0f)
-                        .setDuration(150).setInterpolator(MainActivity.EASE).start();
+                if (liquid != null) {
+                    liquid.onDockFocus(index, false);
+                } else {
+                    v.animate().scaleX(1f).scaleY(1f)
+                            .translationY(0f)
+                            .setDuration(150).setInterpolator(MainActivity.EASE).start();
+                }
                 overlay.post(() -> {
                     if (!isAnyDockTileFocused()) updateDockTooltip(null, "");
                 });
@@ -1914,7 +1940,8 @@ final class SceneHome {
             if (isGear) {
                 showGearSheet(v);
             } else if (isMore) {
-                showOtherAppsSheet(v);
+                if (liquid != null) liquid.showAllApps(v);
+                else showOtherAppsSheet(v);
             } else {
                 openDockApp(v, a);
             }
@@ -2429,7 +2456,7 @@ final class SceneHome {
                     focusDock(Math.min(index, Math.max(0, dockTiles.size() - 1)));
                 });
             } else {
-                labels.add(I18n.s(host, "Move to Other Apps", "Diğer Uygulamalara Taşı"));
+                labels.add(liquid != null ? "Remove from dock" : I18n.s(host, "Move to Other Apps", "Diğer Uygulamalara Taşı"));
                 actions.add(() -> {
                     moveVisibleDockAppToOtherApps(a);
                     rebuildDock();
@@ -2446,8 +2473,10 @@ final class SceneHome {
 
         if (a.pkg != null && !a.key.startsWith("demo_app:") && !MainActivity.INPUTS_KEY.equals(a.key)) {
             labels.add(I18n.s(host, "App Info", "Uygulama Bilgileri"));
-            actions.add(() -> host.startSafe(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + a.pkg))));
+            actions.add(() -> {
+                if (liquid != null) liquid.showAppInfo(a, tile);
+                else host.startSafe(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.pkg)));
+            });
             if (!a.system) {
                 labels.add(I18n.s(host, "Uninstall", "Kaldır"));
                 actions.add(() -> host.startSafe(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + a.pkg))));
@@ -2527,6 +2556,7 @@ final class SceneHome {
         focusedDockIdx = clamped;
         host.prefs.edit().putInt("last_dock_idx", clamped).apply();
         View tile = dockTiles.get(clamped);
+        if (liquid != null) liquid.ensureWindow(clamped);
         boolean alreadyFocused = tile.isFocused();
         tile.requestFocus();
         // Coming back to Home with focus still on the same dock tile fires no focus change,
@@ -3132,6 +3162,7 @@ final class SceneHome {
 
     void closeSheetImmediate() {
         if (sheetLayer == null) return;
+        overlay.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         FrameLayout l = sheetLayer;
         sheetLayer = null;
         sheetReturnFocus = null;
@@ -3149,6 +3180,7 @@ final class SceneHome {
 
     void closeSheet() {
         if (sheetLayer == null) return;
+        overlay.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         FrameLayout l = sheetLayer;
         sheetLayer = null;
         if (shelfBox != null && shelfBox.getVisibility() == View.VISIBLE) {
@@ -3173,6 +3205,7 @@ final class SceneHome {
     boolean dispatchKey(KeyEvent ev) {
         int k = ev.getKeyCode();
         boolean down = ev.getAction() == KeyEvent.ACTION_DOWN;
+        if (liquid != null && liquid.dispatchKey(ev)) return true;
 
         if (sheetLayer != null) {
             if (k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_ESCAPE) {
