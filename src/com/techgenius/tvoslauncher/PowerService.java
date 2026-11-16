@@ -374,6 +374,8 @@ public class PowerService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         instance = this;
+        Dimmer.forget();
+        handler.post(() -> Dimmer.apply(this));
         serviceConnectedElapsedMs = SystemClock.elapsedRealtime();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         try {
@@ -1011,6 +1013,9 @@ public class PowerService extends AccessibilityService {
         }
     }
 
+    /** Package of the app in front, from window changes. */
+    static volatile String lastForegroundPkg;
+
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         if (event == null) return false;
@@ -1063,6 +1068,16 @@ public class PowerService extends AccessibilityService {
                 onVolumeKeyState(dir, false, false);
             }
             return false;
+        }
+        // Liquid Glass: the remote's Settings button opens the Control Panel with the app in front
+        // highlighted in Recent apps (unless the Button mapper has its own action for it).
+        if (code == KeyEvent.KEYCODE_SETTINGS && com.techgenius.tvoslauncher.liquid.Liquid.isOn(this)
+                && !ButtonMapper.isKeyCustomMapped(this, code)) {
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                final String fg = lastForegroundPkg;
+                handler.post(() -> LiquidHome.openControlPanelFor(this, fg));
+            }
+            return true;
         }
         if (ButtonMapper.handleKeyEvent(this, event)) {
             return true;
@@ -1132,6 +1147,7 @@ public class PowerService extends AccessibilityService {
                 setKeyFilteringEnabled(!isGame);
             }
             RecentAppsOverlay.recordAppUsed(this, fgPkg);
+            if (!"com.android.systemui".equals(fgPkg) && !"android".equals(fgPkg)) lastForegroundPkg = fgPkg;
             MediaWatchService.pollActiveSessionsAsync(this);
 
             // Caffeine Mode: deny Android TV's automatic Ambient Mode / Backdrop / Dream screensaver

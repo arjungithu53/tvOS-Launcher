@@ -155,6 +155,11 @@ final class LiquidControl {
     private LinearLayout recentRow;
 
     void showControlPanel(View returnTo, boolean focusNotifications) {
+        showControlPanel(returnTo, focusNotifications, null);
+    }
+
+    /** @param highlightPkg app to focus in Recent apps (the remote's Settings button), or null */
+    void showControlPanel(View returnTo, boolean focusNotifications, String highlightPkg) {
         if (sh.sheetLayer != null) return;
         LinearLayout col = openLayer(returnTo, true, 320, 0x26030612, 0xB3030612);
 
@@ -168,6 +173,31 @@ final class LiquidControl {
         time.setText(new SimpleDateFormat(Scenes.isClock24h(host) ? "HH:mm" : "h:mm", Locale.getDefault()).format(new Date()));
         head.addView(time);
         col.addView(head);
+
+        // ---- recent apps (first: the remote's Settings button lands here)
+        LinearLayout rh = new LinearLayout(host);
+        rh.setOrientation(LinearLayout.HORIZONTAL);
+        rh.setGravity(Gravity.CENTER_VERTICAL);
+        rh.addView(caps("Recent apps"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        clearChip = chip("Clear", this::clearRecents);
+        clearChip.setId(View.generateViewId());
+        rh.addView(clearChip);
+        LinearLayout.LayoutParams rhl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rhl.topMargin = dp(14);
+        col.addView(rh, rhl);
+        pinRow = new LinearLayout(host);
+        pinRow.setOrientation(LinearLayout.HORIZONTAL);
+        pinRow.setClipChildren(false);
+        LinearLayout.LayoutParams prl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        prl.topMargin = dp(8);
+        col.addView(pinRow, prl);
+        recentRow = new LinearLayout(host);
+        recentRow.setOrientation(LinearLayout.HORIZONTAL);
+        recentRow.setClipChildren(false);
+        LinearLayout.LayoutParams rrl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rrl.topMargin = dp(5);
+        col.addView(recentRow, rrl);
+        fillRecents();
 
         // ---- 8 tiles
         List<View> tiles = new ArrayList<>();
@@ -222,6 +252,7 @@ final class LiquidControl {
         sll.topMargin = dp(15);
         col.addView(sl, sll);
         AudioManager am = (AudioManager) host.getSystemService(Context.AUDIO_SERVICE);
+        slider(sl, "Brightness", "ambient", () -> Dimmer.level(c), v -> Dimmer.set(c, v));
         slider(sl, "Volume", "audio", () -> {
             if (am == null) return 0;
             int max = Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
@@ -231,23 +262,6 @@ final class LiquidControl {
             int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
             am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(v / 100f * max), 0);
         });
-
-        // ---- recent apps
-        LinearLayout rh = new LinearLayout(host);
-        rh.setOrientation(LinearLayout.HORIZONTAL);
-        rh.setGravity(Gravity.CENTER_VERTICAL);
-        rh.addView(caps("Recent apps"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        rh.addView(chip("Clear", this::clearRecents));
-        LinearLayout.LayoutParams rhl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rhl.topMargin = dp(16);
-        col.addView(rh, rhl);
-        recentRow = new LinearLayout(host);
-        recentRow.setOrientation(LinearLayout.HORIZONTAL);
-        recentRow.setClipChildren(false);
-        LinearLayout.LayoutParams rrl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rrl.topMargin = dp(9);
-        col.addView(recentRow, rrl);
-        fillRecents();
 
         // ---- notifications
         LinearLayout nh = new LinearLayout(host);
@@ -272,8 +286,15 @@ final class LiquidControl {
         Notifs.markSeen(host);
         lh.updateBadge();
 
-        View first = focusNotifications && cpNotifBox.getChildCount() > 0 && cpNotifBox.getChildAt(0).isFocusable()
-                ? cpNotifBox.getChildAt(0) : tiles.get(0);
+        View first = tiles.get(0);
+        if (focusNotifications && cpNotifBox.getChildCount() > 0 && cpNotifBox.getChildAt(0).isFocusable()) {
+            first = cpNotifBox.getChildAt(0);
+        } else if (highlightPkg != null) {
+            for (int i = 0; i < recentRow.getChildCount(); i++) {
+                View v = recentRow.getChildAt(i);
+                if (highlightPkg.equals(v.getTag(R_PKG))) first = v;
+            }
+        }
         first.post(first::requestFocus);
     }
 
@@ -415,71 +436,89 @@ final class LiquidControl {
         }
     }
 
+    private LinearLayout pinRow;
+    private View clearChip;
+    private static final int R_PKG = 0x7f0a1001;
+
+    /** Pins above, apps below, in line: Up from an app reaches its pin, Up again reaches Clear. */
     private void fillRecents() {
         if (recentRow == null) return;
         recentRow.removeAllViews();
+        pinRow.removeAllViews();
         List<String> pkgs;
         try {
             pkgs = RecentAppsOverlay.getRecentPackages(host, 5);
         } catch (Throwable t) {
             pkgs = new ArrayList<>();
         }
-        if (pkgs.isEmpty()) {
-            TextView e = text(9.5f, "regular", 0xB3FFFFFF);
-            e.setText("No recent apps");
-            recentRow.addView(e);
-            return;
-        }
+        int cell = dp(44), gap = dp(11);
         for (String pkg : pkgs) {
             MainActivity.AppEntry a = lh.entryFor(pkg);
-            if (a == null) continue;
-            LinearLayout cell = new LinearLayout(host);
-            cell.setOrientation(LinearLayout.VERTICAL);
-            cell.setGravity(Gravity.CENTER_HORIZONTAL);
-            cell.setClipChildren(false);
-            FrameLayout ic = new FrameLayout(host);
-            ImageView iv = new ImageView(host);
-            sh.applyLiquidIconTo(iv, a, dp(44));
-            ic.addView(iv, new FrameLayout.LayoutParams(dp(44), dp(44)));
+            if (a == null || a.launch == null) continue;
+            boolean first = recentRow.getChildCount() == 0;
+
+            // pin button
+            FrameLayout pf = new FrameLayout(host);
             ImageView pin = new ImageView(host);
+            pin.setScaleType(ImageView.ScaleType.CENTER);
             pin.setImageBitmap(Glyphs.get("pin", dp(10), Color.WHITE));
             GradientDrawable pb = new GradientDrawable();
             pb.setShape(GradientDrawable.OVAL);
-            pb.setColor(0xE6467CFF);
             pin.setBackground(pb);
-            pin.setScaleType(ImageView.ScaleType.CENTER);
-            FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(dp(15), dp(15), Gravity.TOP | Gravity.END);
-            pl.topMargin = -dp(3);
-            pl.rightMargin = -dp(3);
-            ic.setClipChildren(false);
-            ic.addView(pin, pl);
-            pin.setVisibility(RecentAppsOverlay.isPinned(host, pkg) ? View.VISIBLE : View.GONE);
-            cell.addView(ic, new LinearLayout.LayoutParams(dp(44), dp(44)));
-            focusable(cell, dp(12), 1.12f);
-            cell.setLongClickable(true);
-            cell.setOnClickListener(v -> {
+            Runnable paint = () -> {
+                boolean p = RecentAppsOverlay.isPinned(host, pkg);
+                pb.setColor(p ? 0xF2467CFF : 0x33FFFFFF);
+                pb.setStroke(Math.max(1, dp(0.6f)), p ? 0xFFBED7FF : 0x4DFFFFFF);
+            };
+            paint.run();
+            pf.addView(pin, new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
+            pf.setFocusable(true);
+            pf.setClickable(true);
+            pf.setOnFocusChangeListener((x, has) -> {
+                pin.setForeground(has ? lh.ring(dp(10)) : null);
+                pin.animate().scaleX(has ? 1.25f : 1f).scaleY(has ? 1.25f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
+                if (has) keepVisible(x);
+            });
+            pf.setOnClickListener(x -> {
+                RecentAppsOverlay.setPinned(host, pkg, !RecentAppsOverlay.isPinned(host, pkg));
+                paint.run();
+            });
+            pf.setNextFocusUpId(clearChip.getId() != View.NO_ID ? clearChip.getId() : View.NO_ID);
+            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(cell, dp(24));
+            if (!first) pl.leftMargin = gap;
+            pinRow.addView(pf, pl);
+
+            // app
+            FrameLayout ic = new FrameLayout(host);
+            ImageView iv = new ImageView(host);
+            sh.applyLiquidIconTo(iv, a, cell);
+            ic.addView(iv, new FrameLayout.LayoutParams(cell, cell));
+            ic.setTag(R_PKG, pkg);
+            focusable(ic, dp(12), 1.12f);
+            ic.setLongClickable(true);
+            ic.setOnClickListener(v -> {
                 sh.closeSheetImmediate();
                 host.launchAnimated(null, a);
             });
-            cell.setOnLongClickListener(v -> {
-                boolean pinned = RecentAppsOverlay.isPinned(host, pkg);
-                List<String> labels = new ArrayList<>(Arrays.asList(pinned ? "Unpin" : "Pin (stays open on Clear)", "App info", "Close app"));
+            ic.setOnLongClickListener(v -> {
+                List<String> labels = new ArrayList<>(Arrays.asList("App info", "Close app"));
                 List<Runnable> acts = new ArrayList<>();
-                acts.add(() -> {
-                    RecentAppsOverlay.setPinned(host, pkg, !pinned);
-                    pin.setVisibility(!pinned ? View.VISIBLE : View.GONE);
-                });
                 acts.add(() -> lh.showAppInfo(a, v));
                 acts.add(() -> {
                     RecentAppsOverlay.removeAndKillApp(host, pkg);
                     fillRecents();
                 });
-                host.showMenu(v, a.label, labels, acts, 2);
+                host.showMenu(v, a.label, labels, acts, 1);
                 return true;
             });
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (recentRow.getChildCount() > 0) cl.leftMargin = dp(11);
-            recentRow.addView(cell, cl);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(cell, cell);
+            if (!first) cl.leftMargin = gap;
+            recentRow.addView(ic, cl);
+        }
+        if (recentRow.getChildCount() == 0) {
+            TextView e = text(9.5f, "regular", 0xB3FFFFFF);
+            e.setText("No recent apps");
+            recentRow.addView(e);
         }
     }
 

@@ -126,6 +126,15 @@ final class LiquidHome {
         updateBadge();
         hideSaver();
         resetSaver();
+        if (pendingControlPanel) {
+            pendingControlPanel = false;
+            String p = pendingRecent;
+            pendingRecent = null;
+            host.handler.postDelayed(() -> {
+                if (sh.isSheetOpen()) sh.closeSheetImmediate();
+                control.showControlPanel(sh.moonBtn, false, p);
+            }, 250);
+        }
         if (pendingLookAndFeel) {
             pendingLookAndFeel = false;
             host.handler.postDelayed(() -> control.showLookAndFeel(null), 300);
@@ -1172,6 +1181,33 @@ final class LiquidHome {
     private FrameLayout banner;
     /** Set by the Control Panel tile when it was used over another app: open the list on return. */
     static boolean pendingNotifications;
+    /** The remote's Settings button over another app: open the Control Panel on return. */
+    static boolean pendingControlPanel;
+    static String pendingRecent;
+
+    /** The remote's Settings button (from the accessibility service): Control Panel, with pkg highlighted. */
+    static void openControlPanelFor(android.content.Context c, String pkg) {
+        String own = c.getPackageName();
+        String target = pkg == null || pkg.equals(own) || Perms.isAnySystemLauncherPackage(c, pkg) ? null : pkg;
+        MainActivity m = MainActivity.activeInstance;
+        if (m != null && m.resumed && m.sceneHome != null && m.sceneHome.liquid != null) {
+            SceneHome s = m.sceneHome;
+            if (s.isSheetOpen()) {
+                s.closeSheet();
+                return;
+            }
+            s.liquid.control.showControlPanel(s.moonBtn, false, target);
+            return;
+        }
+        pendingControlPanel = true;
+        pendingRecent = target;
+        try {
+            c.startActivity(new android.content.Intent(c, MainActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** Set by Settings › Appearance › Liquid Glass look & feel: open the glass panel over Home. */
     static boolean pendingLookAndFeel;
 
