@@ -3,7 +3,8 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
 
       - name: Version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [ "$GITHUB_EVENT_NAME" = release ]; then
             echo "VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "VERSION_NAME=$(grep -o 'VERSION_NAME:-[^}]*' build.sh | cut -d- -f2-)-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
@@ -50,7 +51,7 @@ jobs:
           path: build/tvos-home.apk
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/tvos-home.apk --title "$GITHUB_REF_NAME" --notes "tvOS Launcher Glass $VERSION_NAME"
+        run: gh release upload "$GITHUB_REF_NAME" build/tvos-home.apk --clobber -R "$GITHUB_REPOSITORY"
