@@ -1005,7 +1005,6 @@ final class LocalAdb {
                 cmds.add("cmd role add-role-holder --user 0 android.app.role.HOME " + pkg + " 1 2>/dev/null");
                 cmds.add("cmd role add-role-holder --user 0 android.app.role.HOME " + pkg + " 2>/dev/null");
                 cmds.add("cmd package set-home-activity --user 0 " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
-                cmds.add("cmd package set-home-activity --user 0 " + pkg + "/.MainActivity 2>/dev/null");
                 cmds.add("cmd package set-home-activity " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
                 cmds.add("pm set-home-activity --user 0 " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
 
@@ -1084,7 +1083,6 @@ final class LocalAdb {
             cmds.add("cmd role add-role-holder --user 0 android.app.role.HOME " + pkg + " 1 2>/dev/null");
             cmds.add("cmd role add-role-holder --user 0 android.app.role.HOME " + pkg + " 2>/dev/null");
             cmds.add("cmd package set-home-activity --user 0 " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
-            cmds.add("cmd package set-home-activity --user 0 " + pkg + "/.MainActivity 2>/dev/null");
             cmds.add("cmd package set-home-activity " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
             cmds.add("pm set-home-activity --user 0 " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
             cmds.add("pm set-home-activity " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null");
@@ -1401,7 +1399,7 @@ final class LocalAdb {
                         + "appops set " + pkg + " ACCESS_RESTRICTED_SETTINGS allow 2>/dev/null; "
                         + "settings put secure enabled_accessibility_services \"" + newAcc + "\" 2>/dev/null; "
                         + "settings put secure accessibility_enabled 1 2>/dev/null; "
-                        + "am start -n " + pkg + "/.MainActivity -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null "
+                        + "am start -n " + pkg + "/" + MainActivity.class.getName() + " -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null "
                         + "|| am start -n " + pkg + "/" + MainActivity.class.getName() + " 2>/dev/null";
 
                 portReachable = true;
