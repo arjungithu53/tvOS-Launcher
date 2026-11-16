@@ -86,7 +86,7 @@ final class Perms {
         if (tryStart(a, new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))) return;
         if (tryStart(a, new Intent("android.settings.NOTIFICATION_POLICY_ACCESS_SETTINGS"))) return;
         lastResort(a, I18n.s(a, "Continue Watching & Do Not Disturb", "\u0130zlemeye Devam Et ve Rahats\u0131z Etmeyin"),
-                "adb shell cmd notification allow_listener com.techgenius.tvoslauncher/com.techgenius.tvoslauncher.MediaWatchService");
+                "adb shell cmd notification allow_listener " + a.getPackageName() + "/" + MediaWatchService.class.getName());
     }
 
     /** Starts a system screen if the TV really has it (many TVs map settings actions to empty stubs). */
@@ -292,8 +292,8 @@ final class Perms {
                                     }
                                 } else {
                                     lastResort(a, I18n.s(a, "Home screen", "Ana ekran"),
-                                            "adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.techgenius.tvoslauncher\n"
-                                            + "adb shell cmd package set-home-activity com.techgenius.tvoslauncher/.MainActivity\n"
+                                            "adb shell cmd role add-role-holder --user 0 android.app.role.HOME " + a.getPackageName() + "\n"
+                                            + "adb shell cmd package set-home-activity " + a.getPackageName() + "/" + MainActivity.class.getName() + "\n"
                                             + "adb shell pm disable-user --user 0 com.google.android.tvlauncher");
                                 }
                             }));

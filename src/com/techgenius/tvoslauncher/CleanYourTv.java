@@ -2299,8 +2299,8 @@ public final class CleanYourTv {
         new Thread(() -> {
             List<String> cmds = new ArrayList<>();
             if (disable) {
-                cmds.add("cmd role add-role-holder --user 0 android.app.role.HOME com.techgenius.tvoslauncher");
-                cmds.add("cmd package set-home-activity --user 0 com.techgenius.tvoslauncher/.MainActivity");
+                cmds.add("cmd role add-role-holder --user 0 android.app.role.HOME " + activity.getPackageName());
+                cmds.add("cmd package set-home-activity --user 0 " + activity.getPackageName() + "/" + MainActivity.class.getName());
                 cmds.add("pm disable-user --user 0 " + pkg);
             } else {
                 cmds.add("pm enable --user 0 " + pkg);
@@ -2760,7 +2760,7 @@ public final class CleanYourTv {
         new Thread(() -> {
             List<String> commands = new ArrayList<>(safePkgs.size() + 2);
             // Set tvOS Launcher as default home role holder too
-            commands.add("cmd role add-role-holder --user 0 android.app.role.HOME com.techgenius.tvoslauncher");
+            commands.add("cmd role add-role-holder --user 0 android.app.role.HOME " + activity.getPackageName());
             for (String pkg : safePkgs) {
                 commands.add("pm disable-user --user 0 " + pkg);
             }
