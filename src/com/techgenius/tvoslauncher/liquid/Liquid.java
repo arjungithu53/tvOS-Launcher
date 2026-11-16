@@ -270,6 +270,11 @@ public final class Liquid {
         return prefs(c).getString("clock_text_pos", "below");
     }
 
+    /** Liquid glass face: numbers (12, 3, 6, 9), all, lines, none. */
+    public static String clockMarks(Context c) {
+        return prefs(c).getString("clock_marks", "numbers");
+    }
+
     public static boolean clockSeconds(Context c) {
         return prefs(c).getBoolean("clock_seconds", true);
     }

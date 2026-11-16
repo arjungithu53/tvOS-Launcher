@@ -192,7 +192,7 @@ final class LiquidHome {
         box.setGravity(beside ? Gravity.CENTER_VERTICAL : (centre ? Gravity.CENTER_HORIZONTAL : right ? Gravity.END : Gravity.START));
         box.setClipChildren(false);
 
-        AnalogClock clock = new AnalogClock(host, Liquid.clockFace(host), Liquid.clockSeconds(host));
+        AnalogClock clock = new AnalogClock(host, Liquid.clockFace(host), Liquid.clockSeconds(host), Liquid.clockMarks(host));
         if ("liquid".equals(Liquid.clockFace(host))) clock.setBackground(sh.liquidGlass(Liquid.WIDGETS, d / 2f));
         box.addView(clock, new LinearLayout.LayoutParams(d, d));
 
@@ -204,6 +204,7 @@ final class LiquidHome {
         Ui.textSize(dateText, ts * 0.5f);
         dateText.setTypeface(Ui.font(host, "regular".equals(w) ? "medium" : w));
         dateText.setLetterSpacing(0.14f);
+        dateText.setSingleLine(true);
         dateText.setTextColor(0xE6FFFFFF);
         dateText.setShadowLayer(dp(8), 0, dp(1), 0x80000000);
         timeText = new TextView(host);
@@ -212,6 +213,7 @@ final class LiquidHome {
         timeText.setTextColor(0xFFFFFFFF);
         timeText.setShadowLayer(dp(10), 0, dp(2), 0x66000000);
         timeText.setIncludeFontPadding(false);
+        timeText.setSingleLine(true);
         col.addView(dateText);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         tl.topMargin = dp(2);

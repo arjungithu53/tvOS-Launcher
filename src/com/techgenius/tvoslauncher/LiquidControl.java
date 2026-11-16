@@ -179,6 +179,18 @@ final class LiquidControl {
         rh.setOrientation(LinearLayout.HORIZONTAL);
         rh.setGravity(Gravity.CENTER_VERTICAL);
         rh.addView(caps("Recent apps"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageView gear = new ImageView(host);
+        gear.setScaleType(ImageView.ScaleType.CENTER);
+        gear.setImageBitmap(Glyphs.get("gear", dp(12), Color.WHITE));
+        gear.setBackground(pane(dp(12), false));
+        focusable(gear, dp(12), 1.1f);
+        gear.setOnClickListener(v -> {
+            sh.closeSheetImmediate();
+            sh.showGearSheet(sh.moonBtn);
+        });
+        LinearLayout.LayoutParams gearl = new LinearLayout.LayoutParams(dp(24), dp(24));
+        gearl.rightMargin = dp(7);
+        rh.addView(gear, gearl);
         clearChip = chip("Clear", this::clearRecents);
         clearChip.setId(View.generateViewId());
         rh.addView(clearChip);
@@ -247,7 +259,7 @@ final class LiquidControl {
         LinearLayout sl = new LinearLayout(host);
         sl.setOrientation(LinearLayout.VERTICAL);
         sl.setBackground(pane(dp(15), false));
-        sl.setPadding(dp(13), dp(11), dp(13), dp(12));
+        sl.setPadding(dp(6), dp(6), dp(6), dp(6));
         LinearLayout.LayoutParams sll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         sll.topMargin = dp(15);
         col.addView(sl, sll);
@@ -356,10 +368,12 @@ final class LiquidControl {
 
     /** A focusable slider row: Left/Right change it by 10. */
     private void slider(LinearLayout parent, String label, String glyph, java.util.function.IntSupplier get, IntConsumer set) {
-        LinearLayout box = new LinearLayout(host);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(6), dp(5), dp(6), dp(5));
-        box.addView(caps(label));
+        FrameLayout box = new FrameLayout(host);
+        box.setPadding(dp(8), 0, dp(8), 0);
+        TextView cap = caps(label);
+        FrameLayout.LayoutParams capl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        capl.topMargin = dp(5);
+        box.addView(cap, capl);
         LinearLayout r = new LinearLayout(host);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -376,9 +390,7 @@ final class LiquidControl {
         TextView val = text(9f, "regular", Color.WHITE);
         val.setGravity(Gravity.END);
         r.addView(val, new LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rl.topMargin = dp(6);
-        box.addView(r, rl);
+        box.addView(r, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
         Runnable refresh = () -> {
             int v = Math.max(0, Math.min(100, get.getAsInt()));
             bar.value = v / 100f;
@@ -406,7 +418,7 @@ final class LiquidControl {
             }
             return true;
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
         if (parent.getChildCount() > 0) lp.topMargin = dp(6);
         parent.addView(box, lp);
     }
@@ -456,34 +468,41 @@ final class LiquidControl {
             if (a == null || a.launch == null) continue;
             boolean first = recentRow.getChildCount() == 0;
 
-            // pin button
-            FrameLayout pf = new FrameLayout(host);
+            // pin: a small capsule above the app, white when pinned
+            LinearLayout pf = new LinearLayout(host);
+            pf.setOrientation(LinearLayout.HORIZONTAL);
+            pf.setGravity(Gravity.CENTER);
             ImageView pin = new ImageView(host);
-            pin.setScaleType(ImageView.ScaleType.CENTER);
-            pin.setImageBitmap(Glyphs.get("pin", dp(10), Color.WHITE));
+            TextView pt = text(7f, "semibold", Color.WHITE);
+            pf.addView(pin, new LinearLayout.LayoutParams(dp(8), dp(8)));
+            LinearLayout.LayoutParams ptl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ptl.leftMargin = dp(3);
+            pf.addView(pt, ptl);
             GradientDrawable pb = new GradientDrawable();
-            pb.setShape(GradientDrawable.OVAL);
-            pin.setBackground(pb);
+            pb.setCornerRadius(dp(8));
+            pf.setBackground(pb);
             Runnable paint = () -> {
                 boolean p = RecentAppsOverlay.isPinned(host, pkg);
-                pb.setColor(p ? 0xF2467CFF : 0x33FFFFFF);
-                pb.setStroke(Math.max(1, dp(0.6f)), p ? 0xFFBED7FF : 0x4DFFFFFF);
+                pb.setColor(p ? 0xF2FFFFFF : 0x24FFFFFF);
+                pb.setStroke(Math.max(1, dp(0.5f)), p ? 0xFFFFFFFF : 0x40FFFFFF);
+                pin.setImageBitmap(Glyphs.get("pin", dp(8), p ? 0xFF0B1130 : Color.WHITE));
+                pt.setText(p ? "Pinned" : "Pin");
+                pt.setTextColor(p ? 0xFF0B1130 : Color.WHITE);
             };
             paint.run();
-            pf.addView(pin, new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
             pf.setFocusable(true);
             pf.setClickable(true);
             pf.setOnFocusChangeListener((x, has) -> {
-                pin.setForeground(has ? lh.ring(dp(10)) : null);
-                pin.animate().scaleX(has ? 1.25f : 1f).scaleY(has ? 1.25f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
+                x.setForeground(has ? lh.ring(dp(8)) : null);
+                x.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
                 if (has) keepVisible(x);
             });
             pf.setOnClickListener(x -> {
                 RecentAppsOverlay.setPinned(host, pkg, !RecentAppsOverlay.isPinned(host, pkg));
                 paint.run();
             });
-            pf.setNextFocusUpId(clearChip.getId() != View.NO_ID ? clearChip.getId() : View.NO_ID);
-            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(cell, dp(24));
+            pf.setNextFocusUpId(clearChip.getId());
+            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(cell, dp(16));
             if (!first) pl.leftMargin = gap;
             pinRow.addView(pf, pl);
 
@@ -788,6 +807,14 @@ final class LiquidControl {
             applyLive(CLOCK);
             refill();
         }));
+        if ("liquid".equals(Liquid.clockFace(c))) {
+            add(chips(new String[][]{{"numbers", "12 · 3 · 6 · 9"}, {"all", "All numbers"}, {"lines", "Lines"}, {"none", "None"}},
+                    Liquid.clockMarks(c), "marks:", id -> {
+                        Liquid.putString(c, "clock_marks", id);
+                        applyLive(CLOCK);
+                        refill();
+                    }));
+        }
         intSlider("Clock size", "", "s:clocksize", () -> Liquid.clockSize(c), v -> {
             Liquid.putInt(c, "clock_size", v);
             applyLive(CLOCK);

@@ -1083,11 +1083,11 @@ public class PowerService extends AccessibilityService {
         // Liquid Glass: the remote's Settings button opens the Control Panel with the app in front
         // highlighted in Recent apps (unless the Button mapper has its own action for it).
         // Short press: Control Panel. Long press: Google TV's own quick settings.
-        // This remote's Settings button has no Android key code (scan code 240, "unknown").
         if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
             android.util.Log.i("tvOSKeys", "key " + code + " scan " + event.getScanCode());
         }
-        boolean settingsKey = code == KeyEvent.KEYCODE_SETTINGS
+        // This remote's Settings button arrives as KEYCODE_NOTIFICATION (83, scan code 240).
+        boolean settingsKey = code == KeyEvent.KEYCODE_SETTINGS || code == KeyEvent.KEYCODE_NOTIFICATION
                 || (code == KeyEvent.KEYCODE_UNKNOWN && event.getScanCode() == 240);
         if (settingsKey && com.techgenius.tvoslauncher.liquid.Liquid.isOn(this)
                 && (code == KeyEvent.KEYCODE_UNKNOWN || !ButtonMapper.isKeyCustomMapped(this, code))) {

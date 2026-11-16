@@ -29,24 +29,28 @@ final class AnalogClock extends View {
     static final String[] FACES = {"liquid", "glass", "minimal", "neumorphic", "meridian", "meridian_dark"};
     static final String[] FACE_NAMES = {"Liquid glass", "Clear glass", "Minimal", "Neumorphic", "Meridian", "Meridian dark"};
 
-    private final String face;
+    private final String face, marks;
     private final boolean seconds;
     private Bitmap dial;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Path path = new Path();
 
-    AnalogClock(Context c, String face, boolean seconds) {
+    /** @param marks Liquid glass face only: numbers (12, 3, 6, 9), all (1–12), lines, none */
+    AnalogClock(Context c, String face, boolean seconds, String marks) {
         super(c);
         this.face = face == null ? "liquid" : face;
         this.seconds = seconds;
+        this.marks = marks == null ? "numbers" : marks;
+        if (android.os.Build.VERSION.SDK_INT < 28) setLayerType(LAYER_TYPE_SOFTWARE, null);  // shadows on lines
     }
 
+    /** The second hand sweeps: redraw every frame while it shows; otherwise once a second. */
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             invalidate();
-            long now = System.currentTimeMillis();
-            long step = seconds ? 1000 - now % 1000 : 60_000 - now % 60_000;
-            postDelayed(this, step + 5);
+            boolean onScreen = getWindowVisibility() == VISIBLE && isShown();
+            if (seconds && onScreen) postOnAnimation(this);
+            else postDelayed(this, 1000);
         }
     };
 
@@ -194,13 +198,39 @@ final class AnalogClock extends View {
                 c.drawLine(cx + R * 0.035f, cy - R * 0.92f, cx + R * 0.035f, cy - R * 0.72f, q);
                 break;
             }
-            default: {  // liquid: the glass disc is the view background; marks here
+            default: {  // liquid: the glass disc is the view background; a plain rim and the chosen marks
+                q.setStyle(Paint.Style.STROKE);
+                q.setStrokeWidth(Math.max(1f, R * 0.012f));
+                q.setColor(0x80FFFFFF);
+                c.drawCircle(cx, cy, s / 2f - q.getStrokeWidth(), q);
+                q.setStyle(Paint.Style.FILL);
                 q.setColor(0xF2FFFFFF);
                 q.setShadowLayer(R * 0.03f, 0, R * 0.012f, 0x80000000);
-                for (int i = 0; i < 12; i++) {
-                    double a = Math.toRadians(i * 30 - 90);
-                    float rr = i % 3 == 0 ? R * 0.05f : R * 0.028f;
-                    c.drawCircle(cx + (float) Math.cos(a) * R * 0.8f, cy + (float) Math.sin(a) * R * 0.8f, rr, q);
+                if ("lines".equals(marks)) {
+                    q.setStyle(Paint.Style.STROKE);
+                    q.setStrokeCap(Paint.Cap.ROUND);
+                    for (int i = 0; i < 12; i++) {
+                        q.setStrokeWidth(i % 3 == 0 ? R * 0.035f : R * 0.018f);
+                        float r0 = i % 3 == 0 ? R * 0.72f : R * 0.78f;
+                        double a = Math.toRadians(i * 30 - 90);
+                        c.drawLine(cx + (float) Math.cos(a) * r0, cy + (float) Math.sin(a) * r0,
+                                cx + (float) Math.cos(a) * R * 0.86f, cy + (float) Math.sin(a) * R * 0.86f, q);
+                    }
+                } else if (!"none".equals(marks)) {
+                    Paint t = new Paint(Paint.ANTI_ALIAS_FLAG);
+                    t.setColor(0xF2FFFFFF);
+                    t.setTypeface(Ui.font(getContext(), "medium"));
+                    t.setTextAlign(Paint.Align.CENTER);
+                    t.setShadowLayer(R * 0.03f, 0, R * 0.012f, 0x80000000);
+                    boolean all = "all".equals(marks);
+                    t.setTextSize(R * (all ? 0.15f : 0.19f));
+                    for (int i = 1; i <= 12; i++) {
+                        if (!all && i % 3 != 0) continue;
+                        double a = Math.toRadians(i * 30 - 90);
+                        float x = cx + (float) Math.cos(a) * R * 0.74f;
+                        float y = cy + (float) Math.sin(a) * R * 0.74f + t.getTextSize() * 0.36f;
+                        c.drawText(String.valueOf(i), x, y, t);
+                    }
                 }
                 q.clearShadowLayer();
                 break;
@@ -241,13 +271,11 @@ final class AnalogClock extends View {
 
     private void drawHands(Canvas c, int s) {
         Calendar cal = Calendar.getInstance();
-        float sec = cal.get(Calendar.SECOND);
+        float sec = cal.get(Calendar.SECOND) + cal.get(Calendar.MILLISECOND) / 1000f;
         float min = cal.get(Calendar.MINUTE) + sec / 60f;
         float hr = cal.get(Calendar.HOUR) + min / 60f;
         float cx = s / 2f, cy = s / 2f, R = s / 2f * 0.92f;
         float h = hr * 30, m = min * 6, sc = sec * 6;
-        // software layer for hand shadows
-        if (getLayerType() != LAYER_TYPE_SOFTWARE) setLayerType(LAYER_TYPE_SOFTWARE, null);
         switch (face) {
             case "glass":
                 hand(c, cx, cy, h, R * 0.5f, 0, R * 0.035f, 0xFFFFFFFF, true, Paint.Cap.ROUND);
