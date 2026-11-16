@@ -54,9 +54,10 @@ final class Notifs {
         }
         if (all == null) return out;
         Set<String> muted = muted(c);
+        Set<String> hidden = new HashSet<>(prefs(c).getStringSet("hidden", Collections.emptySet()));
         for (StatusBarNotification sbn : all) {
             Item it = item(c, sbn);
-            if (it != null && !muted.contains(it.pkg)) out.add(it);
+            if (it != null && !muted.contains(it.pkg) && !hidden.contains(it.key + "|" + it.time)) out.add(it);
         }
         Collections.sort(out, (a, b) -> Long.compare(b.time, a.time));
         return out;
@@ -95,6 +96,22 @@ final class Notifs {
         prefs(c).edit().putLong("seen", System.currentTimeMillis()).apply();
     }
 
+    /**
+     * Notifications an app keeps up on purpose (a running service, for example) can't be removed by
+     * anyone but that app; Clear all and Dismiss hide those from the launcher's list instead.
+     */
+    static void hide(Context c, Item it) {
+        Set<String> h = new HashSet<>(prefs(c).getStringSet("hidden", Collections.emptySet()));
+        if (h.size() > 200) h.clear();
+        h.add(it.key + "|" + it.time);
+        prefs(c).edit().putStringSet("hidden", h).apply();
+    }
+
+    static void remove(Context c, Item it) {
+        if (it.clearable) dismiss(it.key);
+        else hide(c, it);
+    }
+
     static void dismiss(String key) {
         MediaWatchService s = MediaWatchService.instance;
         if (s == null || key == null) return;
@@ -107,9 +124,7 @@ final class Notifs {
     static void clearAll(Context c) {
         MediaWatchService s = MediaWatchService.instance;
         if (s == null) return;
-        for (Item it : list(c)) {
-            if (it.clearable) dismiss(it.key);
-        }
+        for (Item it : list(c)) remove(c, it);
     }
 
     static Set<String> muted(Context c) {

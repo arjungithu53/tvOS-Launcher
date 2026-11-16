@@ -126,6 +126,10 @@ final class LiquidHome {
         updateBadge();
         hideSaver();
         resetSaver();
+        if (pendingLookAndFeel) {
+            pendingLookAndFeel = false;
+            host.handler.postDelayed(() -> control.showLookAndFeel(null), 300);
+        }
         if (pendingNotifications) {
             pendingNotifications = false;
             host.handler.postDelayed(() -> showNotifications(null), 300);
@@ -465,10 +469,28 @@ final class LiquidHome {
         }
     }
 
+    private final java.util.Map<String, MainActivity.AppEntry> extraEntries = new java.util.HashMap<>();
+
     MainActivity.AppEntry entryFor(String pkg) {
         if (pkg == null) return null;
         for (MainActivity.AppEntry e : host.all.values()) if (pkg.equals(e.pkg)) return e;
-        return null;
+        MainActivity.AppEntry x = extraEntries.get(pkg);
+        if (x != null) return x;
+        // Apps without a launcher entry (system services posting notifications): their own icon.
+        try {
+            android.content.pm.PackageManager pm = host.getPackageManager();
+            android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
+            x = new MainActivity.AppEntry();
+            x.key = "notif:" + pkg;
+            x.pkg = pkg;
+            x.label = pm.getApplicationLabel(ai).toString();
+            x.icon = pm.getApplicationIcon(ai);
+            x.system = true;
+            extraEntries.put(pkg, x);
+            return x;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     private void togglePlay() {
@@ -1150,6 +1172,8 @@ final class LiquidHome {
     private FrameLayout banner;
     /** Set by the Control Panel tile when it was used over another app: open the list on return. */
     static boolean pendingNotifications;
+    /** Set by Settings › Appearance › Liquid Glass look & feel: open the glass panel over Home. */
+    static boolean pendingLookAndFeel;
 
     private void setupNotifications() {
         badge = text(8f, "semibold", Color.WHITE);

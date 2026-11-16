@@ -116,9 +116,13 @@ final class LiquidControl {
     /** A rounded pane that lights up when focused (white ring, slight lift). */
     private GradientDrawable pane(float r, boolean on) {
         GradientDrawable g = on
-                ? new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0x8C78B4FF, 0x594678FF})
+                ? new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xD978B4FF, 0xB34678FF})
                 : new GradientDrawable();
-        if (!on) g.setColor(0x1AFFFFFF);
+        if (!on) {
+            // Tiles: dark or light, as solid as set in Look & feel › Control Panel
+            int a = Math.round(Liquid.cpTileOpacity(host) / 100f * 255f);
+            g.setColor((a << 24) | (Liquid.cpTilesDark(host) ? 0x0A0E1E : 0xFFFFFF));
+        }
         g.setCornerRadius(r);
         g.setStroke(Math.max(1, dp(0.5f)), on ? 0x99BED7FF : 0x2EFFFFFF);
         return g;
@@ -218,7 +222,6 @@ final class LiquidControl {
         sll.topMargin = dp(15);
         col.addView(sl, sll);
         AudioManager am = (AudioManager) host.getSystemService(Context.AUDIO_SERVICE);
-        slider(sl, "Brightness", "ambient", this::brightness, this::setBrightness);
         slider(sl, "Volume", "audio", () -> {
             if (am == null) return 0;
             int max = Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
@@ -253,7 +256,9 @@ final class LiquidControl {
         nh.addView(caps("Notifications"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         nh.addView(chip("Clear all", () -> {
             Notifs.clearAll(host);
-            host.handler.postDelayed(this::fillNotifs, 300);
+            fillNotifs();
+            host.handler.postDelayed(this::fillNotifs, 400);
+            lh.updateBadge();
         }));
         LinearLayout.LayoutParams nhl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         nhl.topMargin = dp(16);
@@ -410,42 +415,6 @@ final class LiquidControl {
         }
     }
 
-    private int brightnessCache = -1;
-
-    private int brightness() {
-        if (brightnessCache >= 0) return brightnessCache;
-        try {
-            int b = Settings.System.getInt(host.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS);
-            brightnessCache = Math.round(b * 100f / 255f / 10f) * 10;
-        } catch (Throwable t) {
-            brightnessCache = 70;
-        }
-        return brightnessCache;
-    }
-
-    /** Brightness through Android's setting: directly when allowed, otherwise over the ADB link. */
-    private void setBrightness(int v) {
-        brightnessCache = v;
-        int raw = Math.max(1, Math.round(v / 100f * 255f));
-        boolean done = false;
-        try {
-            if (android.os.Build.VERSION.SDK_INT < 23 || Settings.System.canWrite(host)) {
-                Settings.System.putInt(host.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE, 0);
-                Settings.System.putInt(host.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, raw);
-                done = true;
-            }
-        } catch (Throwable ignored) {
-        }
-        if (!done) {
-            host.io.execute(() -> {
-                try {
-                    LocalAdb.execShellOutput(host, "settings put system screen_brightness_mode 0; settings put system screen_brightness " + raw);
-                } catch (Throwable ignored) {
-                }
-            });
-        }
-    }
-
     private void fillRecents() {
         if (recentRow == null) return;
         recentRow.removeAllViews();
@@ -580,13 +549,12 @@ final class LiquidControl {
                 List<Runnable> acts = new ArrayList<>();
                 labels.add("Open");
                 acts.add(() -> openNotif(it));
-                if (it.clearable) {
-                    labels.add("Dismiss");
-                    acts.add(() -> {
-                        Notifs.dismiss(it.key);
-                        host.handler.postDelayed(this::fillNotifs, 250);
-                    });
-                }
+                labels.add("Dismiss");
+                acts.add(() -> {
+                    Notifs.remove(host, it);
+                    host.handler.postDelayed(this::fillNotifs, 250);
+                    lh.updateBadge();
+                });
                 labels.add("Turn off for " + lh.appLabel(it.pkg));
                 acts.add(() -> {
                     Notifs.mute(host, it.pkg);
@@ -620,13 +588,15 @@ final class LiquidControl {
     // ================================================================== Look & feel
 
     private LinearLayout lfList;
+    private TextView memLabel;
+    /** Part being adjusted in Advanced mode. */
+    private String lfPart = Liquid.DOCK;
 
-    /** Glass settings over Home: every change shows on the screen behind it right away. */
+    /** Glass settings over Home (opened from Settings): every change shows behind it right away. */
     void showLookAndFeel(View returnTo) {
         if (sh.sheetLayer != null) return;
         LinearLayout col = openLayer(returnTo, false, 400, 0x99030612, 0x00030612);
-        TextView k = caps("Settings");
-        col.addView(k);
+        col.addView(caps("Settings"));
         LinearLayout head = new LinearLayout(host);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -634,6 +604,7 @@ final class LiquidControl {
         title.setText("Look & feel");
         head.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         View done = chip("Done", this::close);
+        done.setTag("done");
         head.addView(done);
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hl.topMargin = dp(3);
@@ -641,10 +612,11 @@ final class LiquidControl {
         lfList = new LinearLayout(host);
         lfList.setOrientation(LinearLayout.VERTICAL);
         lfList.setClipChildren(false);
+        lfList.setClipToPadding(false);
         LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        ll.topMargin = dp(10);
+        ll.topMargin = dp(8);
         col.addView(lfList, ll);
-        fillLookAndFeel(0);
+        fillLookAndFeel(null);
     }
 
     private static final int GLASS = 1, ICONS = 2, WEATHER = 4, NONE = 0;
@@ -654,204 +626,331 @@ final class LiquidControl {
         if ((what & GLASS) != 0) {
             GlassPanel.relookAll(host);
             sh.invalidateSceneGlass();
+            if (scroll != null) scroll.invalidate();
         }
         if ((what & ICONS) != 0) sh.rebuildDock();
         if ((what & WEATHER) != 0) lh.refreshWeather();
         host.activeLiquidStamp = Liquid.stamp(host);
     }
 
-    private final List<View> lfRows = new ArrayList<>();
+    private final java.util.Map<String, View> lfKeys = new java.util.HashMap<>();
 
-    private void fillLookAndFeel(int focusIdx) {
+    private void refill() {
+        View f = host.getCurrentFocus();
+        String key = f != null && f.getTag() instanceof String ? (String) f.getTag() : null;
+        fillLookAndFeel(key);
+    }
+
+    private void fillLookAndFeel(String focusKey) {
         lfList.removeAllViews();
-        lfRows.clear();
+        lfKeys.clear();
         Context c = host;
         boolean adv = Liquid.isAdvanced(c);
-        List<String> styles = Arrays.asList("clear", "frosted", "tinted", "dark");
-        List<String> styleNames = Arrays.asList("Clear", "Frosted", "Tinted", "Dark glass");
-        row("Settings mode", "Basic: one glass for everything. Advanced: per part", () -> adv ? "Advanced" : "Basic",
-                () -> {
-                    Liquid.putString(c, "mode", adv ? "basic" : "advanced");
-                    applyLive(GLASS);
-                    fillLookAndFeel(0);
-                },
-                d -> {
-                    Liquid.putString(c, "mode", d < 0 ? "basic" : "advanced");
-                    applyLive(GLASS);
-                    fillLookAndFeel(0);
-                });
-        row("Glass style", "Clear, Frosted, Tinted, Dark glass", () -> "‹ " + styleNames.get(Math.max(0, styles.indexOf(Liquid.preset(c)))) + " ›",
-                () -> {
-                    Liquid.applyPreset(c, styles.get((styles.indexOf(Liquid.preset(c)) + 1) % 4));
-                    applyLive(GLASS);
-                },
-                d -> {
-                    Liquid.applyPreset(c, styles.get(((styles.indexOf(Liquid.preset(c)) + d) % 4 + 4) % 4));
-                    applyLive(GLASS);
-                });
+
+        // Basic | Advanced, and the memory estimate
+        LinearLayout top = new LinearLayout(host);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout seg = chips(new String[][]{{"basic", "Basic"}, {"advanced", "Advanced"}}, adv ? "advanced" : "basic", "mode:", id -> {
+            Liquid.putString(c, "mode", id);
+            applyLive(GLASS);
+            refill();
+        });
+        top.addView(seg, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        memLabel = text(8.5f, "semibold", 0xFFBFF5D2);
+        memLabel.setPadding(dp(8), dp(4), dp(8), dp(4));
+        GradientDrawable mb = new GradientDrawable();
+        mb.setCornerRadius(dp(10));
+        mb.setColor(0x3328C76F);
+        mb.setStroke(Math.max(1, dp(0.5f)), 0x6628C76F);
+        memLabel.setBackground(mb);
+        memLabel.setText("Extra memory: about 4 MB");
+        top.addView(memLabel);
+        lfList.addView(top);
+
         if (!adv) {
-            pct("Dock background", "0 hides the dock plate", "basic", "dock");
-            glassRows("basic");
+            header("Glass style");
+            add(chips(new String[][]{{"clear", "Clear"}, {"frosted", "Frosted"}, {"tinted", "Tinted"}, {"dark", "Dark glass"}}, Liquid.preset(c), "preset:", id -> {
+                Liquid.applyPreset(c, id);
+                applyLive(GLASS);
+                refill();
+            }));
+            header("App icons");
+            add(chips(new String[][]{{"tile", "With tile"}, {"bare", "No tile"}}, Liquid.iconStyle(c), "icons:", id -> {
+                Liquid.putString(c, "icon_style", id);
+                applyLive(ICONS);
+                refill();
+            }));
+            header("Glass");
+            slider("Dock background", "0 removes it completely", "basic", "dock");
+            glassSliders("basic");
+            intSlider("Glass depth", "How thick the coloured icon glass looks", "s:depth", () -> Liquid.iconDepth(c), v -> {
+                Liquid.putInt(c, "icon_depth", v);
+                applyLive(ICONS);
+            });
+            intSlider("See-through", "How clear the coloured icon glass is", "s:clarity", () -> Liquid.iconClarity(c), v -> {
+                Liquid.putInt(c, "icon_clarity", v);
+                applyLive(ICONS);
+            });
+            magnification();
         } else {
-            String[][] parts = {{Liquid.DOCK, "Dock"}, {Liquid.WIDGETS, "Widgets"}, {Liquid.PANEL, "Panels"}, {Liquid.BUTTONS, "Buttons"}};
-            for (String[] p : parts) {
-                header(p[1]);
-                pct("Background", "How much glass this part has", p[0], "bg");
-                glassRows(p[0]);
+            header("Part to adjust");
+            add(chips(new String[][]{{Liquid.DOCK, "Dock"}, {"icons", "App icons"}, {Liquid.WIDGETS, "Widgets"},
+                    {Liquid.PANEL, "Control Panel"}, {Liquid.BUTTONS, "Top buttons"}}, lfPart, "part:", id -> {
+                lfPart = id;
+                refill();
+            }));
+            String part = lfPart;
+            String name = "icons".equals(part) ? "App icons" : Liquid.DOCK.equals(part) ? "Dock" : Liquid.WIDGETS.equals(part) ? "Widgets"
+                    : Liquid.PANEL.equals(part) ? "Control Panel" : "Top buttons";
+            if ("icons".equals(part)) {
+                header("App icons · style");
+                add(chips(new String[][]{{"tile", "With tile"}, {"bare", "No tile"}}, Liquid.iconStyle(c), "icons:", id -> {
+                    Liquid.putString(c, "icon_style", id);
+                    applyLive(ICONS);
+                    refill();
+                }));
+                intSlider("Glass depth", "How thick the coloured glass looks", "s:depth", () -> Liquid.iconDepth(c), v -> {
+                    Liquid.putInt(c, "icon_depth", v);
+                    applyLive(ICONS);
+                });
+                intSlider("See-through", "How clear the coloured glass is", "s:clarity", () -> Liquid.iconClarity(c), v -> {
+                    Liquid.putInt(c, "icon_clarity", v);
+                    applyLive(ICONS);
+                });
+            } else {
+                header(name + " · style");
+                String pp = Liquid.partPreset(c, part);
+                add(chips(new String[][]{{"", "Same as Basic"}, {"clear", "Clear"}, {"frosted", "Frosted"}, {"tinted", "Tinted"}, {"dark", "Dark"}},
+                        pp == null ? "" : pp, "pstyle:", id -> {
+                            Liquid.applyPartPreset(c, part, id.isEmpty() ? null : id);
+                            applyLive(GLASS);
+                            refill();
+                        }));
+                slider("Background", Liquid.DOCK.equals(part) ? "0 removes it completely" : "How much glass this part has", part, "bg");
+                glassSliders(part);
+                if (Liquid.PANEL.equals(part)) {
+                    header("Control Panel · tiles");
+                    add(chips(new String[][]{{"dark", "Dark tiles"}, {"light", "Light tiles"}}, Liquid.cpTilesDark(c) ? "dark" : "light", "tiles:", id -> {
+                        Liquid.putBool(c, "cp_tiles_dark", "dark".equals(id));
+                        refill();
+                    }));
+                    intSlider("Tile opacity", "How solid the tiles are, for reading over bright scenes", "s:tileop",
+                            () -> Liquid.cpTileOpacity(c), v -> Liquid.putInt(c, "cp_tile_opacity", v));
+                }
+                if (Liquid.DOCK.equals(part)) magnification();
             }
         }
-        header("App icons");
-        row("Icon style", "Glass only, or glass on a frosted tile", () -> "tile".equals(Liquid.iconStyle(c)) ? "‹ With tile ›" : "‹ No tile ›",
-                () -> {
-                    Liquid.putString(c, "icon_style", "tile".equals(Liquid.iconStyle(c)) ? "bare" : "tile");
-                    applyLive(ICONS);
-                },
-                d -> {
-                    Liquid.putString(c, "icon_style", "tile".equals(Liquid.iconStyle(c)) ? "bare" : "tile");
-                    applyLive(ICONS);
-                });
-        intRow("Glass depth", "How thick the coloured glass looks", () -> Liquid.iconDepth(c), v -> {
-            Liquid.putInt(c, "icon_depth", v);
-            applyLive(ICONS);
-        });
-        intRow("See-through", "How clear the coloured glass is", () -> Liquid.iconClarity(c), v -> {
-            Liquid.putInt(c, "icon_clarity", v);
-            applyLive(ICONS);
-        });
-        header("Dock");
-        List<String> mags = Arrays.asList("off", "subtle", "strong");
-        row("Magnification", "Off, Subtle, Strong", () -> "‹ " + cap(Liquid.magnify(c)) + " ›",
-                () -> Liquid.putString(c, "magnify", mags.get((mags.indexOf(Liquid.magnify(c)) + 1) % 3)),
-                d -> Liquid.putString(c, "magnify", mags.get(Math.max(0, Math.min(2, mags.indexOf(Liquid.magnify(c)) + d)))));
-        toggle("Tilt and shine", "No extra memory", () -> Liquid.tilt(c), v -> Liquid.putBool(c, "tilt", v), NONE);
         header("Extras");
-        toggle("Weather on glass", "Rain and frost from the forecast", () -> Liquid.weatherFx(c), v -> Liquid.putBool(c, "weather_fx", v), WEATHER);
-        List<String> ss = Arrays.asList("drift", "clock", "glass");
-        List<String> ssn = Arrays.asList("Scene drift", "Minimal clock", "Liquid glass");
-        row("Screensaver", "Style", () -> "‹ " + ssn.get(Math.max(0, ss.indexOf(Liquid.saverStyle(c)))) + " ›",
-                () -> Liquid.putString(c, "saver_style", ss.get((ss.indexOf(Liquid.saverStyle(c)) + 1) % 3)),
-                d -> Liquid.putString(c, "saver_style", ss.get(((ss.indexOf(Liquid.saverStyle(c)) + d) % 3 + 3) % 3)));
-        int[] afters = {1, 5, 15, 0};
-        row("Start screensaver after", "", () -> {
-            int m = Liquid.saverAfter(c);
-            return "‹ " + (m == 0 ? "Never" : m + " min") + " ›";
-        }, () -> step(afters, 1), d -> step(afters, d));
-        header("More");
-        row("Wallpaper", "Night Scenes and your pictures", () -> "›", () -> openSettings(), null);
-        row("All settings", "Weather, apps, Control Panel, updates…", () -> "›", () -> openSettings(), null);
-        if (!lfRows.isEmpty()) {
-            View t = lfRows.get(Math.max(0, Math.min(focusIdx, lfRows.size() - 1)));
+        toggle("Tilt and shine", "No extra memory", "t:tilt", () -> Liquid.tilt(c), v -> Liquid.putBool(c, "tilt", v), NONE);
+        toggle("Weather on glass", "Rain and frost from the forecast", "t:wx", () -> Liquid.weatherFx(c), v -> Liquid.putBool(c, "weather_fx", v), WEATHER);
+        header("Screensaver");
+        add(chips(new String[][]{{"drift", "Scene drift"}, {"clock", "Minimal clock"}, {"glass", "Liquid glass"}}, Liquid.saverStyle(c), "ss:", id -> {
+            Liquid.putString(c, "saver_style", id);
+            refill();
+        }));
+        add(chips(new String[][]{{"1", "1 min"}, {"5", "5 min"}, {"15", "15 min"}, {"0", "Never"}}, String.valueOf(Liquid.saverAfter(c)), "ssa:", id -> {
+            Liquid.putInt(c, "saver_after", Integer.parseInt(id));
+            lh.resetSaver();
+            refill();
+        }));
+
+        View target = focusKey != null ? lfKeys.get(focusKey) : null;
+        if (target == null) target = lfKeys.get(adv ? "mode:advanced" : "mode:basic");
+        if (target != null) {
+            View t = target;
             t.post(t::requestFocus);
         }
     }
 
-    private void step(int[] afters, int d) {
-        int i = 0;
-        for (int j = 0; j < afters.length; j++) if (afters[j] == Liquid.saverAfter(host)) i = j;
-        Liquid.putInt(host, "saver_after", afters[Math.max(0, Math.min(afters.length - 1, i + d))]);
-        lh.resetSaver();
+    private void magnification() {
+        header("Dock magnification");
+        add(chips(new String[][]{{"off", "Off"}, {"subtle", "Subtle"}, {"strong", "Strong"}}, Liquid.magnify(host), "mag:", id -> {
+            Liquid.putString(host, "magnify", id);
+            refill();
+        }));
     }
 
-    private void openSettings() {
-        sh.closeSheetImmediate();
-        host.returningFromSettings = true;
-        host.startActivity(new Intent(host, SettingsActivity.class));
+    private void add(View v) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(4);
+        lfList.addView(v, lp);
     }
 
-    private static String cap(String s) {
-        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    private interface Pick {
+        void on(String id);
     }
 
-    private void glassRows(String part) {
+    /** A row of chips side by side; the chosen one is white. OK picks, Left/Right move. */
+    private LinearLayout chips(String[][] items, String selected, String keyPrefix, Pick pick) {
+        LinearLayout wrap = new LinearLayout(host);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = null;
+        int inRow = 0, maxRow = items.length > 5 ? 3 : 5;
+        for (String[] it : items) {
+            if (row == null || inRow >= maxRow) {
+                row = new LinearLayout(host);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setClipChildren(false);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (wrap.getChildCount() > 0) rl.topMargin = dp(6);
+                wrap.addView(row, rl);
+                inRow = 0;
+            }
+            boolean sel = it[0].equals(selected);
+            TextView t = text(9.5f, "semibold", sel ? 0xFF0B1130 : Color.WHITE);
+            t.setText(it[1]);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(dp(11), dp(6), dp(11), dp(6));
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(14));
+            g.setColor(sel ? 0xF2FFFFFF : 0x1FFFFFFF);
+            g.setStroke(Math.max(1, dp(0.6f)), sel ? 0xFFFFFFFF : 0x3DFFFFFF);
+            t.setBackground(g);
+            t.setTag(keyPrefix + it[0]);
+            lfKeys.put(keyPrefix + it[0], t);
+            t.setFocusable(true);
+            t.setClickable(true);
+            t.setOnFocusChangeListener((x, has) -> {
+                x.setForeground(has ? lh.ring(dp(14)) : null);
+                x.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
+                if (has) keepVisible(x);
+            });
+            final String id = it[0];
+            t.setOnClickListener(x -> pick.on(id));
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (inRow > 0) cl.leftMargin = dp(6);
+            row.addView(t, cl);
+            inRow++;
+        }
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wrap.setLayoutParams(wl);
+        return wrap;
+    }
+
+    private void glassSliders(String part) {
         String[][] items = {{"trans", "Transparency", "How see-through the glass is"}, {"blur", "Blur", "How soft the scene behind looks"},
                 {"refr", "Refraction", "Glass bends the scene behind it"}, {"tint", "Tint", "How milky the glass is"}, {"rim", "Rim light", "Bright edge on the glass"}};
-        for (String[] it : items) pct(it[1], it[2], part, it[0]);
+        for (String[] it : items) slider(it[1], it[2], part, it[0]);
     }
 
-    private void pct(String label, String hint, String part, String what) {
-        intRow(label, hint, () -> Liquid.value(host, part, what), v -> {
+    private void slider(String label, String hint, String part, String what) {
+        intSlider(label, hint, "s:" + part + ":" + what, () -> Liquid.value(host, part, what), v -> {
             Liquid.setValue(host, part, what, v);
             applyLive(GLASS);
         });
     }
 
-    private void intRow(String label, String hint, java.util.function.IntSupplier get, IntConsumer set) {
-        row(label, hint, () -> "‹ " + get.getAsInt() + "% ›",
-                () -> set.accept(get.getAsInt() >= 100 ? 0 : get.getAsInt() + 10),
-                d -> set.accept(Math.max(0, Math.min(100, get.getAsInt() + d * 10))));
+    /** Label and hint on the left, a bar and the value on the right; Left/Right change it by 10. */
+    private void intSlider(String label, String hint, String key, java.util.function.IntSupplier get, IntConsumer set) {
+        LinearLayout r = new LinearLayout(host);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(10), dp(6), dp(10), dp(6));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(12));
+        bg.setColor(0);
+        r.setBackground(bg);
+        LinearLayout tx = new LinearLayout(host);
+        tx.setOrientation(LinearLayout.VERTICAL);
+        TextView l = text(10.5f, "semibold", Color.WHITE);
+        l.setText(label);
+        tx.addView(l);
+        TextView h = text(7.5f, "regular", 0xB3FFFFFF);
+        h.setText(hint);
+        if (hint != null && !hint.isEmpty()) tx.addView(h);
+        r.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f));
+        Bar bar = new Bar();
+        View bv = new View(host);
+        bv.setBackground(bar);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(6), 1f);
+        bl.leftMargin = dp(8);
+        r.addView(bv, bl);
+        TextView val = text(9.5f, "medium", Color.WHITE);
+        val.setGravity(Gravity.END);
+        r.addView(val, new LinearLayout.LayoutParams(dp(30), ViewGroup.LayoutParams.WRAP_CONTENT));
+        Runnable refresh = () -> {
+            int v = Math.max(0, Math.min(100, get.getAsInt()));
+            bar.value = v / 100f;
+            bv.invalidate();
+            val.setText(v + "%");
+        };
+        refresh.run();
+        r.setTag(key);
+        lfKeys.put(key, r);
+        r.setFocusable(true);
+        r.setOnFocusChangeListener((x, has) -> {
+            bg.setColor(has ? 0x33FFFFFF : 0);
+            x.setForeground(has ? lh.ring(dp(12)) : null);
+            bar.lit = has;
+            bv.invalidate();
+            if (has) keepVisible(x);
+        });
+        r.setOnKeyListener((x, k, ev) -> {
+            if (k != KeyEvent.KEYCODE_DPAD_LEFT && k != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
+            if (ev.getAction() == KeyEvent.ACTION_DOWN) {
+                set.accept(Math.max(0, Math.min(100, get.getAsInt() + (k == KeyEvent.KEYCODE_DPAD_LEFT ? -10 : 10))));
+                refresh.run();
+            }
+            return true;
+        });
+        add(r);
     }
 
-    private void toggle(String label, String hint, Supplier<Boolean> get, java.util.function.Consumer<Boolean> set, int live) {
-        row(label, hint, () -> get.get() ? "On" : "Off", () -> {
+    private void toggle(String label, String hint, String key, Supplier<Boolean> get, java.util.function.Consumer<Boolean> set, int live) {
+        LinearLayout r = new LinearLayout(host);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(10), dp(6), dp(10), dp(6));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(12));
+        bg.setColor(0);
+        r.setBackground(bg);
+        LinearLayout tx = new LinearLayout(host);
+        tx.setOrientation(LinearLayout.VERTICAL);
+        TextView l = text(10.5f, "semibold", Color.WHITE);
+        l.setText(label);
+        tx.addView(l);
+        TextView h = text(7.5f, "regular", 0xB3FFFFFF);
+        h.setText(hint);
+        tx.addView(h);
+        r.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView sw = text(9f, "semibold", Color.WHITE);
+        sw.setGravity(Gravity.CENTER);
+        sw.setPadding(dp(9), dp(3), dp(9), dp(3));
+        GradientDrawable sb = new GradientDrawable();
+        sb.setCornerRadius(dp(10));
+        sw.setBackground(sb);
+        r.addView(sw);
+        Runnable refresh = () -> {
+            boolean on = get.get();
+            sw.setText(on ? "On" : "Off");
+            sb.setColor(on ? 0xFF34C759 : 0x33FFFFFF);
+        };
+        refresh.run();
+        r.setTag(key);
+        lfKeys.put(key, r);
+        r.setFocusable(true);
+        r.setClickable(true);
+        r.setOnFocusChangeListener((x, has) -> {
+            bg.setColor(has ? 0x33FFFFFF : 0);
+            x.setForeground(has ? lh.ring(dp(12)) : null);
+            if (has) keepVisible(x);
+        });
+        r.setOnClickListener(x -> {
             set.accept(!get.get());
             applyLive(live);
-        }, d -> {
-            set.accept(d > 0);
-            applyLive(live);
+            refresh.run();
         });
+        add(r);
     }
 
     private void header(String s) {
         TextView h = caps(s);
         LinearLayout.LayoutParams l = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        l.topMargin = dp(14);
+        l.topMargin = dp(13);
         l.bottomMargin = dp(6);
-        l.leftMargin = dp(4);
+        l.leftMargin = dp(2);
         lfList.addView(h, l);
-    }
-
-    private void row(String label, String hint, Supplier<String> value, Runnable ok, IntConsumer lr) {
-        LinearLayout r = new LinearLayout(host);
-        r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(dp(12), dp(8), dp(12), dp(8));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(13));
-        bg.setColor(0x00FFFFFF);
-        r.setBackground(bg);
-        LinearLayout tx = new LinearLayout(host);
-        tx.setOrientation(LinearLayout.VERTICAL);
-        TextView l = text(11f, "semibold", Color.WHITE);
-        l.setText(label);
-        tx.addView(l);
-        TextView h = null;
-        if (hint != null && !hint.isEmpty()) {
-            h = text(8.5f, "regular", 0xB3FFFFFF);
-            h.setText(hint);
-            tx.addView(h);
-        }
-        r.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView v = text(10f, "medium", 0xE6FFFFFF);
-        r.addView(v);
-        Runnable refresh = () -> v.setText(value.get());
-        refresh.run();
-        final TextView hh = h;
-        r.setFocusable(true);
-        r.setClickable(true);
-        r.setOnFocusChangeListener((x, has) -> {
-            bg.setColor(has ? 0xF2FFFFFF : 0x00FFFFFF);
-            l.setTextColor(has ? 0xFF0B1130 : Color.WHITE);
-            v.setTextColor(has ? 0xFF0B1130 : 0xE6FFFFFF);
-            if (hh != null) hh.setTextColor(has ? 0x990B1130 : 0xB3FFFFFF);
-            if (has) keepVisible(x);
-        });
-        r.setOnClickListener(x -> {
-            ok.run();
-            refresh.run();
-        });
-        if (lr != null) {
-            r.setOnKeyListener((x, k, ev) -> {
-                if (k != KeyEvent.KEYCODE_DPAD_LEFT && k != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
-                if (ev.getAction() == KeyEvent.ACTION_DOWN) {
-                    lr.accept(k == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
-                    if (r.isAttachedToWindow()) refresh.run();
-                }
-                return true;
-            });
-        }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(2);
-        lfList.addView(r, lp);
-        lfRows.add(r);
     }
 }

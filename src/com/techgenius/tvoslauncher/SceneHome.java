@@ -1938,8 +1938,7 @@ final class SceneHome {
                 return;
             }
             if (isGear) {
-                if (liquid != null) liquid.control.showLookAndFeel(v);
-                else showGearSheet(v);
+                showGearSheet(v);
             } else if (isMore) {
                 if (liquid != null) liquid.showAllApps(v);
                 else showOtherAppsSheet(v);

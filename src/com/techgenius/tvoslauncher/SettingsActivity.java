@@ -1007,7 +1007,10 @@ public class SettingsActivity extends Activity {
                     selectSection(LOOK_SCENES, true, 2);
                 });
         if (liquidOn) {
-            row("Liquid Glass look & feel", () -> "›", () -> openSubMenu("liquid_glass"));
+            row("Liquid Glass look & feel", () -> "Opens over Home  ›", () -> {
+                LiquidHome.pendingLookAndFeel = true;
+                finish();
+            });
         }
 
         section(tr("HOME SCREEN WIDGETS", "ANA EKRAN WIDGET'LARI"));

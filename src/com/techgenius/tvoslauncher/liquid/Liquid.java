@@ -96,7 +96,8 @@ public final class Liquid {
      */
     public static Look look(Context c, String part) {
         SharedPreferences p = prefs(c);
-        int[] pv = preset(preset(c));
+        String pp = isAdvanced(c) ? partPreset(c, part) : null;
+        int[] pv = preset(pp != null ? pp : preset(c));
         String pre = isAdvanced(c) ? "adv_" + part + "_" : "basic_";
         int defBg = DOCK.equals(part) ? 0 : 100;
         int bg = isAdvanced(c) ? p.getInt(pre + "bg", defBg)
@@ -169,6 +170,30 @@ public final class Liquid {
         bump(e, c);
     }
 
+    /** A part's own glass style in Advanced mode, or null for "same as Basic". */
+    public static String partPreset(Context c, String part) {
+        return prefs(c).getString("adv_" + part + "_preset", null);
+    }
+
+    /** Gives a part its own style (null: same as Basic) and drops its hand-tuned values. */
+    public static void applyPartPreset(Context c, String part, String id) {
+        SharedPreferences.Editor e = prefs(c).edit();
+        if (id == null) e.remove("adv_" + part + "_preset");
+        else e.putString("adv_" + part + "_preset", id);
+        for (String w : new String[]{"trans", "blur", "refr", "tint", "rim"}) e.remove("adv_" + part + "_" + w);
+        bump(e, c);
+    }
+
+    /** Control Panel tiles: dark (default, readable over bright scenes) or light. */
+    public static boolean cpTilesDark(Context c) {
+        return prefs(c).getBoolean("cp_tiles_dark", true);
+    }
+
+    /** How solid the Control Panel tiles are, 0..100. */
+    public static int cpTileOpacity(Context c) {
+        return prefs(c).getInt("cp_tile_opacity", 45);
+    }
+
     /** Current value of one glass setting for a part ("basic" or a part name), for the settings rows. */
     public static int value(Context c, String part, String what) {
         Look l;
@@ -181,7 +206,8 @@ public final class Liquid {
             if ("dock".equals(what)) return prefs(c).getInt("basic_dock", 0);
             return 0;
         }
-        int[] pv = preset(preset(c));
+        String pp = partPreset(c, part);
+        int[] pv = preset(pp != null ? pp : preset(c));
         switch (what) {
             case "trans": return prefs(c).getInt("adv_" + part + "_trans", pv[0]);
             case "blur": return prefs(c).getInt("adv_" + part + "_blur", pv[1]);
