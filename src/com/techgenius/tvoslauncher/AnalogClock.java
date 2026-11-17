@@ -214,14 +214,23 @@ final class AnalogClock extends View {
     private void hand(Canvas c, float cx, float cy, float deg, float len, float tail, float w, int color, boolean shadow, Paint.Cap cap) {
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeCap(cap);
-        p.setStrokeWidth(w);
-        p.setColor(color);
-        if (shadow) p.setShadowLayer(w * 1.2f, 0, w * 0.5f, 0x66000000);
-        else p.clearShadowLayer();
+        p.clearShadowLayer();
         double a = Math.toRadians(deg - 90);
         float dx = (float) Math.cos(a), dy = (float) Math.sin(a);
+        if (shadow) {
+            // A soft offset line instead of setShadowLayer: a blurred shadow on a moving hand makes the
+            // GPU build a new blur texture every frame, which kept ~70 MB of GPU memory busy.
+            float off = w * 0.5f;
+            p.setStrokeWidth(w * 1.9f);
+            p.setColor(0x1A000000);
+            c.drawLine(cx - dx * tail, cy - dy * tail + off, cx + dx * len, cy + dy * len + off, p);
+            p.setStrokeWidth(w * 1.35f);
+            p.setColor(0x26000000);
+            c.drawLine(cx - dx * tail, cy - dy * tail + off, cx + dx * len, cy + dy * len + off, p);
+        }
+        p.setStrokeWidth(w);
+        p.setColor(color);
         c.drawLine(cx - dx * tail, cy - dy * tail, cx + dx * len, cy + dy * len, p);
-        p.clearShadowLayer();
     }
 
     /** A tapered hand (Meridian). */
