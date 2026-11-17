@@ -42,6 +42,18 @@ final class Backlight {
 
     private static Uri knownUri;
 
+    /**
+     * The Backlight slider's own addresses in Realtek's picture provider (from its APK). The provider
+     * doesn't list its slices, but it answers these when asked directly. "Dias" is the other picture
+     * menu layout some Realtek TVs use.
+     */
+    private static final String[] KNOWN = {
+            "content://com.realtek.menuslices/MainMenu_Picture/Pic_Backlight/Pic_Backlight_SeekBar",
+            "content://com.realtek.menuslices/MainMenu_Picture/Pic_Backlight/Pic_Backlight_Index/Pic_Backlight_SeekBar",
+            "content://com.realtek.menuslices/MainMenu_Picture_Dias/Dias_Pic_Backlight",
+            "content://com.realtek.menuslices/MainMenu_Picture/Pic_Backlight",
+    };
+
     private static Set<SliceSpec> specs() {
         Set<SliceSpec> s = new HashSet<>();
         s.add(new SliceSpec("androidx.slice.LIST", 1));
@@ -55,8 +67,15 @@ final class Backlight {
         if (android.os.Build.VERSION.SDK_INT < 28) return null;
         SliceManager sm = c.getSystemService(SliceManager.class);
         if (sm == null) return null;
+        if (knownUri != null) {
+            Control ctl = bindAt(sm, knownUri);
+            if (ctl != null) return ctl;
+        }
+        for (String k : KNOWN) {
+            Control ctl = bindAt(sm, Uri.parse(k));
+            if (ctl != null) return ctl;
+        }
         List<Uri> candidates = new ArrayList<>();
-        if (knownUri != null) candidates.add(knownUri);
         for (String auth : AUTHORITIES) {
             try {
                 Collection<Uri> d = sm.getSliceDescendants(Uri.parse("content://" + auth + "/"));
@@ -87,6 +106,39 @@ final class Backlight {
         return null;
     }
 
+    /** A slider slice at a known address: its first value range with an action is the backlight. */
+    private static Control bindAt(SliceManager sm, Uri u) {
+        try {
+            Slice s = sm.bindSlice(u, specs());
+            if (s == null) {
+                Log.i(TAG, "bind " + u + ": nothing");
+                return null;
+            }
+            dump(s, 0);
+            Control ctl = new Control();
+            if (collect(s, ctl, 0) && ctl.action != null) {
+                ctl.slice = u;
+                knownUri = u;
+                Log.i(TAG, "backlight at " + u + " value " + ctl.value + " of " + ctl.min + ".." + ctl.max);
+                return ctl;
+            }
+            Log.i(TAG, "bind " + u + ": no slider in it");
+        } catch (Throwable t) {
+            Log.i(TAG, "bind " + u + " failed: " + t);
+        }
+        return null;
+    }
+
+    private static void dump(Slice s, int depth) {
+        if (depth > 3) return;
+        for (SliceItem it : s.getItems()) {
+            String v = SliceItem.FORMAT_TEXT.equals(it.getFormat()) ? String.valueOf(it.getText())
+                    : SliceItem.FORMAT_INT.equals(it.getFormat()) ? String.valueOf(it.getInt()) : "";
+            Log.i(TAG, "  ".repeat(depth + 1) + it.getFormat() + "/" + it.getSubType() + " " + it.getHints() + " " + v);
+            if (it.getSlice() != null) dump(it.getSlice(), depth + 1);
+        }
+    }
+
     /** Current backlight 0..100, or -1. */
     static int read(Context c) {
         Control ctl = find(c);
@@ -104,6 +156,7 @@ final class Backlight {
         // The value under every name TV and Android slice sliders use for it.
         fill.putExtra(Slice.EXTRA_RANGE_VALUE, v);
         fill.putExtra("android.app.slice.extra.RANGE_VALUE", v);
+        fill.putExtra("android.app.slice.extra.SLIDER_VALUE", v);  // what Realtek's slider reads
         fill.putExtra("SEEKBAR_VALUE", v);
         fill.putExtra("EXTRA_SEEKBAR_VALUE", v);
         try {
@@ -162,7 +215,8 @@ final class Backlight {
                     got = true;
                 }
             } else if (SliceItem.FORMAT_ACTION.equals(f)) {
-                if (ctl.action == null) ctl.action = it.getAction();
+                // A slider's own action is tagged "range"; prefer it over a row's tap action.
+                if (ctl.action == null || sub.contains("range")) ctl.action = it.getAction();
                 if (it.getSlice() != null && depth < 3) got |= collect(it.getSlice(), ctl, depth + 1);
             } else if (SliceItem.FORMAT_SLICE.equals(f) && it.getSlice() != null && depth < 3) {
                 got |= collect(it.getSlice(), ctl, depth + 1);
