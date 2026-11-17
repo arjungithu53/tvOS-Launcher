@@ -1516,9 +1516,10 @@ public final class CustomMedia {
                     deck = redditUrlDeckMap.get(scope);
                     idx = redditDeckIdxMap.containsKey(scope) ? redditDeckIdxMap.get(scope) : 0;
                 }
+                final boolean apod = apodActive(appCtx, scope);
                 if (deck == null || deck.isEmpty() || idx >= deck.size()) {
-                    deck = fetchRedditImageUrls(appCtx, scope);
-                    Collections.shuffle(deck);
+                    deck = apod ? fetchApodUrls(appCtx) : fetchRedditImageUrls(appCtx, scope);
+                    if (!apod) Collections.shuffle(deck);
                     idx = 0;
                     synchronized (redditUrlDeckMap) {
                         redditUrlDeckMap.put(scope, deck);
@@ -1526,6 +1527,7 @@ public final class CustomMedia {
                     }
                 }
                 Bitmap downloaded = null;
+                String gotUrl = null;
                 int attempts = 0;
                 while (deck != null && idx < deck.size() && attempts < 8) {
                     String imgUrl = deck.get(idx);
@@ -1534,10 +1536,14 @@ public final class CustomMedia {
                     synchronized (redditUrlDeckMap) {
                         redditDeckIdxMap.put(scope, idx);
                     }
-                    downloaded = downloadWallpaperUrl(imgUrl);
-                    if (downloaded != null) break;
+                    downloaded = apod ? apodCached(appCtx, imgUrl) : null;
+                    if (downloaded == null) downloaded = downloadWallpaperUrl(imgUrl);
+                    if (downloaded != null) {
+                        gotUrl = imgUrl;
+                        break;
+                    }
                 }
-                if (downloaded == null) {
+                if (downloaded == null && !apod) {
                     // Fallback to curated 1080p landscape wallpapers if deck URLs failed
                     List<String> fallbackUrls = getFallbackRedditWallpaperUrls();
                     Collections.shuffle(fallbackUrls);
@@ -1549,6 +1555,7 @@ public final class CustomMedia {
                 if (downloaded != null) {
                     Bitmap cropped = scaleCenterCropOrFit(downloaded, 1920, 1080, true);
                     if (cropped != downloaded) downloaded.recycle();
+                    if (apod && gotUrl != null) saveApod(appCtx, gotUrl, cropped);
                     File out = redditCacheFile(appCtx, scope);
                     try (FileOutputStream fos = new FileOutputStream(out)) {
                         cropped.compress(Bitmap.CompressFormat.JPEG, 92, fos);
@@ -1586,6 +1593,102 @@ public final class CustomMedia {
                 }
             }
         }, "reddit-wallpaper-fetch").start();
+    }
+
+    // ---------------------------------------------------------------- NASA Astronomy Picture of the Day
+
+    static boolean apodActive(Context c, String scope) {
+        return SCOPE_SCENE.equals(scope) && com.techgenius.tvoslauncher.liquid.Liquid.isApod(c);
+    }
+
+    /** Forget the current online-wallpaper deck (when switching between Reddit and APOD). */
+    public static void resetOnlineDeck(String scope) {
+        synchronized (redditUrlDeckMap) {
+            redditUrlDeckMap.remove(scope);
+            redditDeckIdxMap.remove(scope);
+        }
+        synchronized (redditBmpMap) {
+            redditBmpMap.remove(scope);
+        }
+    }
+
+    /**
+     * Up to 5 recent Astronomy Pictures of the Day (newest first, pictures only, no videos).
+     * The list is fetched once per day and kept, so NASA's public key limits are never reached.
+     */
+    private static List<String> fetchApodUrls(Context c) {
+        SharedPreferences p = c.getSharedPreferences("liquid", Context.MODE_PRIVATE);
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+        f.setTimeZone(java.util.TimeZone.getTimeZone("America/New_York"));  // APOD's own calendar
+        long now = System.currentTimeMillis();
+        String today = f.format(new java.util.Date(now));
+        String cached = p.getString("apod_urls", "");
+        if (today.equals(p.getString("apod_day", null)) && !cached.isEmpty()) {
+            return new ArrayList<>(Arrays.asList(cached.split("\n")));
+        }
+        List<String> urls = new ArrayList<>();
+        java.net.HttpURLConnection conn = null;
+        try {
+            String start = f.format(new java.util.Date(now - 12L * 86_400_000L));
+            String api = "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&start_date=" + start + "&end_date=" + today;
+            conn = (java.net.HttpURLConnection) new java.net.URL(api).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(12000);
+            byte[] bytes;
+            try (InputStream in = conn.getInputStream()) {
+                bytes = Suggestions.readAll(in);
+            }
+            org.json.JSONArray arr = new org.json.JSONArray(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+            for (int i = arr.length() - 1; i >= 0 && urls.size() < 5; i--) {
+                org.json.JSONObject o = arr.optJSONObject(i);
+                if (o == null || !"image".equals(o.optString("media_type"))) continue;
+                String u = o.optString("url", "");
+                if (u.startsWith("http")) urls.add(u);
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        if (urls.isEmpty()) {
+            // Offline or NASA unreachable: keep yesterday's pictures if there are any.
+            if (!cached.isEmpty()) return new ArrayList<>(Arrays.asList(cached.split("\n")));
+            return urls;
+        }
+        p.edit().putString("apod_day", today).putString("apod_urls", android.text.TextUtils.join("\n", urls)).apply();
+        // Drop pictures that left the list.
+        File dir = new File(c.getFilesDir(), "apod");
+        File[] old = dir.listFiles();
+        if (old != null) {
+            java.util.Set<String> keep = new java.util.HashSet<>();
+            for (String u : urls) keep.add(apodName(u));
+            for (File x : old) if (!keep.contains(x.getName())) x.delete();
+        }
+        return urls;
+    }
+
+    private static String apodName(String url) {
+        return Integer.toHexString(url.hashCode()) + ".jpg";
+    }
+
+    private static Bitmap apodCached(Context c, String url) {
+        File f = new File(new File(c.getFilesDir(), "apod"), apodName(url));
+        if (!f.exists()) return null;
+        try {
+            return BitmapFactory.decodeFile(f.getAbsolutePath());
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static void saveApod(Context c, String url, Bitmap b) {
+        File dir = new File(c.getFilesDir(), "apod");
+        if (!dir.exists() && !dir.mkdirs()) return;
+        File f = new File(dir, apodName(url));
+        if (f.exists()) return;
+        try (FileOutputStream fos = new FileOutputStream(f)) {
+            b.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static List<String> fetchRedditImageUrls(Context c, String scope) {

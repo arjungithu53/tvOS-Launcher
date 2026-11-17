@@ -122,6 +122,7 @@ final class LiquidHome {
     }
 
     void onResume() {
+        if (control.isOverlayShowing()) control.closeOverlay();
         refreshWeather();
         updateBadge();
         hideSaver();
@@ -134,6 +135,10 @@ final class LiquidHome {
                 if (sh.isSheetOpen()) sh.closeSheetImmediate();
                 control.showControlPanel(sh.moonBtn, false, p);
             }, 250);
+        }
+        if (pendingSaver) {
+            pendingSaver = false;
+            host.handler.postDelayed(this::showSaver, 300);
         }
         if (pendingLookAndFeel) {
             pendingLookAndFeel = false;
@@ -889,8 +894,11 @@ final class LiquidHome {
 
         gridScroll = new ScrollView(host);
         gridScroll.setVerticalScrollBarEnabled(false);
+        gridScroll.setVerticalFadingEdgeEnabled(false);
+        gridScroll.setFadingEdgeLength(0);
+        gridScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         gridScroll.setClipToPadding(false);
-        gridScroll.setPadding(0, dp(10), 0, dp(40));
+        gridScroll.setPadding(0, dp(18), 0, dp(40));
         gridBox = new LinearLayout(host);
         gridBox.setOrientation(LinearLayout.VERTICAL);
         gridBox.setClipChildren(false);
@@ -965,7 +973,8 @@ final class LiquidHome {
             LinearLayout cell = new LinearLayout(host);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER_HORIZONTAL);
-            cell.setPadding(0, dp(8), 0, dp(8));
+            cell.setPadding(0, dp(12), 0, dp(8));
+            cell.setClipToPadding(false);
             cell.setFocusable(true);
             cell.setClickable(true);
             cell.setLongClickable(true);
@@ -1021,7 +1030,7 @@ final class LiquidHome {
         if (row == null || gridScroll == null) return;
         int top = row.getTop(), bottom = row.getBottom();
         int sy = gridScroll.getScrollY(), h = gridScroll.getHeight() - gridScroll.getPaddingBottom();
-        if (top < sy + dp(10)) gridScroll.smoothScrollTo(0, Math.max(0, top - dp(10)));
+        if (top < sy + dp(10)) gridScroll.smoothScrollTo(0, Math.max(0, top - dp(18)));
         else if (bottom > sy + h - dp(10)) gridScroll.smoothScrollTo(0, bottom - h + dp(20));
     }
 
@@ -1252,6 +1261,11 @@ final class LiquidHome {
             s.liquid.control.showControlPanel(s.moonBtn, false, target);
             return;
         }
+        // Over another app: show the panel right there, without going to Home first.
+        if (m != null && m.sceneHome != null && m.sceneHome.liquid != null
+                && m.sceneHome.liquid.control.showOverApp(target)) {
+            return;
+        }
         pendingControlPanel = true;
         pendingRecent = target;
         try {
@@ -1263,6 +1277,8 @@ final class LiquidHome {
 
     /** Set by Settings › Appearance › Liquid Glass look & feel: open the glass panel over Home. */
     static boolean pendingLookAndFeel;
+    /** Screensaver tile used over an app: start the screensaver once Home is in front. */
+    static boolean pendingSaver;
 
     private void setupNotifications() {
         badge = text(8f, "semibold", Color.WHITE);

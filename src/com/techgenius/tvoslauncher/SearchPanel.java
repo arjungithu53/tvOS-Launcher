@@ -120,7 +120,9 @@ final class SearchPanel {
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setClipChildren(false);
-        head.setPadding(a.dockOuter, a.dp(30), a.dockOuter, 0);
+        // Liquid Glass: keep the mic well inside the screen edge, so its focus ring isn't cut.
+        int edge = com.techgenius.tvoslauncher.liquid.Liquid.isOn(a) ? a.dp(60) : a.dockOuter;
+        head.setPadding(edge, a.dp(30), a.dockOuter, 0);
         if (voice || live) {
             mic = new ImageView(a);
             mic.setId(View.generateViewId());
@@ -151,7 +153,7 @@ final class SearchPanel {
         keyScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         keyScroll.setClipToPadding(false);
         keyScroll.setClipChildren(false);
-        keyScroll.setPadding(a.dockOuter - a.dp(6), a.dp(8), a.dockOuter, a.dp(8));
+        keyScroll.setPadding(edge - a.dp(6), a.dp(8), a.dockOuter, a.dp(8));
         keys = new LinearLayout(a);
         keys.setOrientation(LinearLayout.HORIZONTAL);
         keys.setClipChildren(false);

@@ -1558,6 +1558,10 @@ final class SceneHome {
 
     private void updateDockTooltip(View tile, String text) {
         if (dockLabel == null) return;
+        if (liquid != null) {  // Liquid Glass: no name labels over dock icons
+            dockLabel.setVisibility(View.INVISIBLE);
+            return;
+        }
         if (text == null || text.isEmpty() || tile == null || !Scenes.isDockNamesShown(host)) {
             dockLabel.setVisibility(View.INVISIBLE);
             return;

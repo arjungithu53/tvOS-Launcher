@@ -64,19 +64,108 @@ final class LiquidControl {
     }
 
     private void close() {
-        sh.closeSheet();
+        if (ovLayer != null) {
+            removeOverlay();
+        } else {
+            sh.closeSheet();
+        }
         cpNotifBox = null;
+    }
+
+    /** Close at once (before starting something else). */
+    private void closeNow() {
+        if (ovLayer != null) removeOverlay();
+        else sh.closeSheetImmediate();
+        cpNotifBox = null;
+    }
+
+    // ---------------------------------------------------------------- over other apps
+
+    /** True while the Control Panel is shown over another app (the remote's Settings button). */
+    private boolean overlayMode;
+    private android.view.WindowManager ovWm;
+    private FrameLayout ovLayer;
+    /** The layer the open panel lives in (Home sheet or the overlay window). */
+    private FrameLayout layerRoot;
+
+    boolean isOverlayShowing() {
+        return ovLayer != null;
+    }
+
+    void closeOverlay() {
+        removeOverlay();
+        cpNotifBox = null;
+    }
+
+    /** Opens the Control Panel over the app in front, without going to Home first. */
+    boolean showOverApp(String highlightPkg) {
+        PowerService svc = PowerService.instance;
+        if (svc == null) return false;
+        if (ovLayer != null) {
+            close();
+            return true;
+        }
+        if (sh.sheetLayer != null) sh.closeSheetImmediate();
+        overlayMode = true;
+        try {
+            showControlPanel(null, false, highlightPkg);
+        } catch (Throwable t) {
+            overlayMode = false;
+            removeOverlay();
+            return false;
+        }
+        overlayMode = false;
+        return ovLayer != null;
+    }
+
+    private void removeOverlay() {
+        FrameLayout l = ovLayer;
+        ovLayer = null;
+        layerRoot = null;
+        if (l == null || ovWm == null) return;
+        try {
+            ovWm.removeView(l);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void startOutside(Intent i) {
+        try {
+            host.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Throwable ignored) {
+        }
     }
 
     /** Full-screen layer with a glass panel; registered as SceneHome's sheet so Back closes it. */
     private LinearLayout openLayer(View returnTo, boolean right, int widthU, int shadeFrom, int shadeTo) {
-        FrameLayout layer = new FrameLayout(host);
+        final boolean over = overlayMode;
+        FrameLayout layer = new FrameLayout(host) {
+            @Override public boolean dispatchKeyEvent(KeyEvent ev) {
+                int k = ev.getKeyCode();
+                if (over && (k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_ESCAPE)) {
+                    if (ev.getAction() == KeyEvent.ACTION_UP) close();
+                    return true;
+                }
+                return super.dispatchKeyEvent(ev);
+            }
+        };
         layer.setClickable(true);
         layer.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{shadeFrom, shadeTo}));
         ScrollView sv = new ScrollView(host);
         sv.setVerticalScrollBarEnabled(false);
+        sv.setVerticalFadingEdgeEnabled(false);  // a fading edge made top and bottom rows look cut
+        sv.setFadingEdgeLength(0);
+        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
         sv.setClipToPadding(false);
-        sv.setBackground(sh.liquidGlass(Liquid.PANEL, dp(24)));
+        if (over) {
+            // Over an app there is no wallpaper to sample: frosted dark glass, with the app blurred behind.
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xB81A2236, 0xC70B1020});
+            g.setCornerRadius(dp(24));
+            g.setStroke(Math.max(1, dp(0.8f)), 0x59FFFFFF);
+            sv.setBackground(g);
+        } else {
+            sv.setBackground(sh.liquidGlass(Liquid.PANEL, dp(24)));
+        }
         LinearLayout col = new LinearLayout(host);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(22), dp(20), dp(22), dp(22));
@@ -88,10 +177,29 @@ final class LiquidControl {
         if (right) pl.setMargins(0, dp(30), dp(30), dp(30));
         else pl.setMargins(dp(115), dp(25), 0, dp(25));
         layer.addView(sv, pl);
-        sh.sheetLayer = layer;
-        sh.sheetReturnFocus = returnTo;
-        sh.overlay.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
-        host.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        layerRoot = layer;
+        if (over) {
+            PowerService svc = PowerService.instance;
+            ovWm = (android.view.WindowManager) svc.getSystemService(Context.WINDOW_SERVICE);
+            int flags = android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
+            if (android.os.Build.VERSION.SDK_INT >= 31) flags |= android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+            android.view.WindowManager.LayoutParams wlp = new android.view.WindowManager.LayoutParams(
+                    android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, flags, android.graphics.PixelFormat.TRANSLUCENT);
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                try {
+                    wlp.setBlurBehindRadius(dp(30));
+                } catch (Throwable ignored) {
+                }
+            }
+            ovWm.addView(layer, wlp);
+            ovLayer = layer;
+        } else {
+            sh.sheetLayer = layer;
+            sh.sheetReturnFocus = returnTo;
+            sh.overlay.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+            host.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
         layer.setAlpha(0f);
         sv.setTranslationX(right ? dp(40) : -dp(40));
         layer.animate().alpha(1f).setDuration(180).start();
@@ -109,8 +217,9 @@ final class LiquidControl {
         scroll.getLocationInWindow(b);
         int top = a[1] - b[1], bottom = top + v.getHeight();
         int h = scroll.getHeight();
-        if (top < dp(20)) scroll.smoothScrollBy(0, top - dp(20));
-        else if (bottom > h - dp(20)) scroll.smoothScrollBy(0, bottom - h + dp(20));
+        int m = dp(30);
+        if (top < m) scroll.smoothScrollBy(0, top - m);
+        else if (bottom > h - m) scroll.smoothScrollBy(0, bottom - h + m);
     }
 
     /** A rounded pane that lights up when focused (white ring, slight lift). */
@@ -128,14 +237,17 @@ final class LiquidControl {
         return g;
     }
 
+    /** The one focus look of the panel: a white ring and a small lift. */
     private void focusable(View v, float r, float scale) {
         v.setFocusable(true);
         v.setClickable(true);
-        v.setOnFocusChangeListener((x, has) -> {
-            x.setForeground(has ? lh.ring(r) : null);
-            x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f).setDuration(200).setInterpolator(MainActivity.LIFT).start();
-            if (has) keepVisible(x);
-        });
+        v.setOnFocusChangeListener((x, has) -> focusLook(x, r, scale, has));
+    }
+
+    private void focusLook(View x, float r, float scale, boolean has) {
+        x.setForeground(has ? lh.ring(r) : null);
+        x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f).setDuration(200).setInterpolator(MainActivity.LIFT).start();
+        if (has) keepVisible(x);
     }
 
     private TextView chip(String label, Runnable r) {
@@ -144,7 +256,7 @@ final class LiquidControl {
         t.setGravity(Gravity.CENTER);
         t.setPadding(dp(11), dp(5), dp(11), dp(5));
         t.setBackground(pane(dp(12), false));
-        focusable(t, dp(12), 1.06f);
+        focusable(t, dp(12), 1.08f);
         t.setOnClickListener(v -> r.run());
         return t;
     }
@@ -160,7 +272,7 @@ final class LiquidControl {
 
     /** @param highlightPkg app to focus in Recent apps (the remote's Settings button), or null */
     void showControlPanel(View returnTo, boolean focusNotifications, String highlightPkg) {
-        if (sh.sheetLayer != null) return;
+        if (sh.sheetLayer != null || ovLayer != null) return;
         LinearLayout col = openLayer(returnTo, true, 320, 0x26030612, 0xB3030612);
 
         LinearLayout head = new LinearLayout(host);
@@ -185,6 +297,11 @@ final class LiquidControl {
         gear.setBackground(pane(dp(12), false));
         focusable(gear, dp(12), 1.1f);
         gear.setOnClickListener(v -> {
+            if (ovLayer != null) {
+                closeNow();
+                startOutside(new Intent(host, SettingsActivity.class));
+                return;
+            }
             sh.closeSheetImmediate();
             sh.showGearSheet(sh.moonBtn);
         });
@@ -197,17 +314,30 @@ final class LiquidControl {
         LinearLayout.LayoutParams rhl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rhl.topMargin = dp(14);
         col.addView(rh, rhl);
-        pinRow = new LinearLayout(host);
-        pinRow.setOrientation(LinearLayout.HORIZONTAL);
-        pinRow.setClipChildren(false);
-        LinearLayout.LayoutParams prl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        prl.topMargin = dp(8);
-        col.addView(pinRow, prl);
+        // memory in use right now
+        LinearLayout mem = new LinearLayout(host);
+        mem.setOrientation(LinearLayout.HORIZONTAL);
+        mem.setGravity(Gravity.CENTER_VERTICAL);
+        memText = text(8.5f, "medium", 0xE6FFFFFF);
+        mem.addView(memText);
+        memBar = new Bar();
+        View mb = new View(host);
+        mb.setBackground(memBar);
+        memBarView = mb;
+        LinearLayout.LayoutParams mbl = new LinearLayout.LayoutParams(0, dp(4), 1f);
+        mbl.leftMargin = dp(10);
+        mem.addView(mb, mbl);
+        LinearLayout.LayoutParams meml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        meml.topMargin = dp(8);
+        col.addView(mem, meml);
+        updateMemory();
         recentRow = new LinearLayout(host);
         recentRow.setOrientation(LinearLayout.HORIZONTAL);
         recentRow.setClipChildren(false);
+        recentRow.setClipToPadding(false);
+        recentRow.setPadding(0, dp(6), 0, 0);
         LinearLayout.LayoutParams rrl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rrl.topMargin = dp(5);
+        rrl.topMargin = dp(8);
         col.addView(recentRow, rrl);
         fillRecents();
 
@@ -237,20 +367,24 @@ final class LiquidControl {
             sh.refreshMoonBtn();
         }));
         tiles.add(tile(grid, "input", "Input", () -> "Switch", () -> false, t -> {
+            boolean over = ovLayer != null;
             close();
-            ControlPanelOverlay.openInputs(c, () -> host.showInputs(sh.moonBtn));
+            ControlPanelOverlay.openInputs(c, over ? null : () -> host.showInputs(sh.moonBtn));
         }));
         tiles.add(tile(grid, "ambient", "Screensaver", () -> "Start now", () -> false, t -> {
+            if (ovLayer != null) {
+                closeNow();
+                LiquidHome.pendingSaver = true;
+                startOutside(new Intent(host, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+                return;
+            }
             sh.closeSheetImmediate();
             lh.showSaver();
         }));
-        tiles.add(tile(grid, "scene", "Wallpaper", () -> "Night Scenes", () -> false, t -> {
-            close();
-            host.returningFromSettings = true;
-            host.startActivity(new Intent(host, SettingsActivity.class));
-        }));
+        tiles.add(tile(grid, "scene", "Wallpaper", () -> Liquid.isApod(c) ? "Astronomy" : "Night Scenes",
+                () -> Liquid.isApod(c), t -> setWallpaper(Liquid.isApod(c) ? "scenes" : "apod")));
         tiles.add(tile(grid, "sliders", "Liquid Glass", () -> "On", () -> true, t -> {
-            sh.closeSheetImmediate();
+            closeNow();
             Liquid.setOn(host, false);
             host.recreate();
         }));
@@ -258,8 +392,7 @@ final class LiquidControl {
         // ---- sliders
         LinearLayout sl = new LinearLayout(host);
         sl.setOrientation(LinearLayout.VERTICAL);
-        sl.setBackground(pane(dp(15), false));
-        sl.setPadding(dp(6), dp(6), dp(6), dp(6));
+        sl.setClipChildren(false);
         LinearLayout.LayoutParams sll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         sll.topMargin = dp(15);
         col.addView(sl, sll);
@@ -358,7 +491,7 @@ final class LiquidControl {
         focusable(t, dp(15), 1.04f);
         t.setOnClickListener(v -> {
             act.run(v);
-            if (sh.sheetLayer != null) refresh.run();
+            if (sh.sheetLayer != null || ovLayer != null) refresh.run();
         });
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         if (row.getChildCount() > 0) tl.leftMargin = dp(9);
@@ -369,10 +502,10 @@ final class LiquidControl {
     /** A focusable slider row: Left/Right change it by 10. */
     private void slider(LinearLayout parent, String label, String glyph, java.util.function.IntSupplier get, IntConsumer set) {
         FrameLayout box = new FrameLayout(host);
-        box.setPadding(dp(8), 0, dp(8), 0);
+        box.setPadding(dp(14), 0, dp(14), 0);
         TextView cap = caps(label);
         FrameLayout.LayoutParams capl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-        capl.topMargin = dp(5);
+        capl.topMargin = dp(9);
         box.addView(cap, capl);
         LinearLayout r = new LinearLayout(host);
         r.setOrientation(LinearLayout.HORIZONTAL);
@@ -390,7 +523,9 @@ final class LiquidControl {
         TextView val = text(9f, "regular", Color.WHITE);
         val.setGravity(Gravity.END);
         r.addView(val, new LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT));
-        box.addView(r, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+        FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL);
+        rlp.topMargin = dp(8);
+        box.addView(r, rlp);
         Runnable refresh = () -> {
             int v = Math.max(0, Math.min(100, get.getAsInt()));
             bar.value = v / 100f;
@@ -398,16 +533,12 @@ final class LiquidControl {
             val.setText(String.valueOf(v));
         };
         refresh.run();
-        GradientDrawable fb = new GradientDrawable();
-        fb.setCornerRadius(dp(10));
-        fb.setColor(0x00000000);
-        box.setBackground(fb);
+        box.setBackground(pane(dp(15), false));
         box.setFocusable(true);
         box.setOnFocusChangeListener((x, has) -> {
-            fb.setColor(has ? 0x26FFFFFF : 0);
             bar.lit = has;
             bv.invalidate();
-            if (has) keepVisible(x);
+            focusLook(x, dp(15), 1.02f, has);
         });
         box.setOnKeyListener((x, k, ev) -> {
             if (k != KeyEvent.KEYCODE_DPAD_LEFT && k != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
@@ -418,7 +549,7 @@ final class LiquidControl {
             }
             return true;
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58));
         if (parent.getChildCount() > 0) lp.topMargin = dp(6);
         parent.addView(box, lp);
     }
@@ -447,91 +578,119 @@ final class LiquidControl {
         }
     }
 
-    private LinearLayout pinRow;
     private View clearChip;
+    private TextView memText;
+    private Bar memBar;
+    private View memBarView;
     private static final int R_PKG = 0x7f0a1001;
 
-    /** Pins above, apps below, in line: Up from an app reaches its pin, Up again reaches Clear. */
+    /** Memory in use, from Android's own figures. */
+    private long[] memory() {
+        android.app.ActivityManager am = (android.app.ActivityManager) host.getSystemService(Context.ACTIVITY_SERVICE);
+        android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+        if (am != null) am.getMemoryInfo(mi);
+        return new long[]{mi.totalMem, mi.availMem};
+    }
+
+    private void updateMemory() {
+        if (memText == null) return;
+        long[] m = memory();
+        if (m[0] <= 0) return;
+        long used = m[0] - m[1];
+        memText.setText(String.format(Locale.ENGLISH, "Memory  %.1f of %.1f GB in use", used / 1073741824.0, m[0] / 1073741824.0));
+        memBar.value = used / (float) m[0];
+        memBarView.invalidate();
+    }
+
+    /** Apps in a row; each has a pin in its top-right corner. Up from an app: its pin, then Clear. */
     private void fillRecents() {
         if (recentRow == null) return;
         recentRow.removeAllViews();
-        pinRow.removeAllViews();
         List<String> pkgs;
         try {
             pkgs = RecentAppsOverlay.getRecentPackages(host, 5);
         } catch (Throwable t) {
             pkgs = new ArrayList<>();
         }
-        int cell = dp(44), gap = dp(11);
+        int cell = dp(46), gap = dp(14), pinS = dp(18);
         for (String pkg : pkgs) {
             MainActivity.AppEntry a = lh.entryFor(pkg);
             if (a == null || a.launch == null) continue;
             boolean first = recentRow.getChildCount() == 0;
 
-            // pin: a small capsule above the app, white when pinned
-            LinearLayout pf = new LinearLayout(host);
-            pf.setOrientation(LinearLayout.HORIZONTAL);
-            pf.setGravity(Gravity.CENTER);
-            ImageView pin = new ImageView(host);
-            TextView pt = text(7f, "semibold", Color.WHITE);
-            pf.addView(pin, new LinearLayout.LayoutParams(dp(8), dp(8)));
-            LinearLayout.LayoutParams ptl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            ptl.leftMargin = dp(3);
-            pf.addView(pt, ptl);
-            GradientDrawable pb = new GradientDrawable();
-            pb.setCornerRadius(dp(8));
-            pf.setBackground(pb);
-            Runnable paint = () -> {
-                boolean p = RecentAppsOverlay.isPinned(host, pkg);
-                pb.setColor(p ? 0xF2FFFFFF : 0x24FFFFFF);
-                pb.setStroke(Math.max(1, dp(0.5f)), p ? 0xFFFFFFFF : 0x40FFFFFF);
-                pin.setImageBitmap(Glyphs.get("pin", dp(8), p ? 0xFF0B1130 : Color.WHITE));
-                pt.setText(p ? "Pinned" : "Pin");
-                pt.setTextColor(p ? 0xFF0B1130 : Color.WHITE);
-            };
-            paint.run();
-            pf.setFocusable(true);
-            pf.setClickable(true);
-            pf.setOnFocusChangeListener((x, has) -> {
-                x.setForeground(has ? lh.ring(dp(8)) : null);
-                x.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
-                if (has) keepVisible(x);
-            });
-            pf.setOnClickListener(x -> {
-                RecentAppsOverlay.setPinned(host, pkg, !RecentAppsOverlay.isPinned(host, pkg));
-                paint.run();
-            });
-            pf.setNextFocusUpId(clearChip.getId());
-            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(cell, dp(16));
-            if (!first) pl.leftMargin = gap;
-            pinRow.addView(pf, pl);
+            FrameLayout slot = new FrameLayout(host);
+            slot.setClipChildren(false);
+            slot.setClipToPadding(false);
 
             // app
             FrameLayout ic = new FrameLayout(host);
+            ic.setId(View.generateViewId());
             ImageView iv = new ImageView(host);
             sh.applyLiquidIconTo(iv, a, cell);
             ic.addView(iv, new FrameLayout.LayoutParams(cell, cell));
             ic.setTag(R_PKG, pkg);
-            focusable(ic, dp(12), 1.12f);
-            ic.setLongClickable(true);
+            focusable(ic, dp(13), 1.12f);
+            ic.setLongClickable(ovLayer == null);
             ic.setOnClickListener(v -> {
+                if (ovLayer != null) {
+                    closeNow();
+                    startOutside(new Intent(a.launch));
+                    return;
+                }
                 sh.closeSheetImmediate();
                 host.launchAnimated(null, a);
             });
-            ic.setOnLongClickListener(v -> {
+            if (ovLayer == null) ic.setOnLongClickListener(v -> {
                 List<String> labels = new ArrayList<>(Arrays.asList("App info", "Close app"));
                 List<Runnable> acts = new ArrayList<>();
                 acts.add(() -> lh.showAppInfo(a, v));
                 acts.add(() -> {
                     RecentAppsOverlay.removeAndKillApp(host, pkg);
                     fillRecents();
+                    host.handler.postDelayed(this::updateMemory, 1500);
                 });
                 host.showMenu(v, a.label, labels, acts, 1);
                 return true;
             });
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(cell, cell);
-            if (!first) cl.leftMargin = gap;
-            recentRow.addView(ic, cl);
+            slot.addView(ic, new FrameLayout.LayoutParams(cell, cell));
+
+            // pin badge, overlapping the icon's top-right corner
+            ImageView pin = new ImageView(host);
+            pin.setId(View.generateViewId());
+            pin.setScaleType(ImageView.ScaleType.CENTER);
+            GradientDrawable pb = new GradientDrawable();
+            pb.setShape(GradientDrawable.OVAL);
+            pin.setBackground(pb);
+            pin.setElevation(dp(3));
+            Runnable paint = () -> {
+                boolean p = RecentAppsOverlay.isPinned(host, pkg);
+                pb.setColor(p ? 0xFFFFFFFF : 0xE6262A36);
+                pb.setStroke(Math.max(1, dp(1f)), p ? 0xFFFFFFFF : 0x66FFFFFF);
+                pin.setImageBitmap(Glyphs.get("pin", dp(9), p ? 0xFF0B1130 : Color.WHITE));
+            };
+            paint.run();
+            pin.setFocusable(true);
+            pin.setClickable(true);
+            pin.setOnFocusChangeListener((x, has) -> {
+                x.setForeground(has ? lh.ring(pinS / 2f) : null);
+                x.animate().scaleX(has ? 1.25f : 1f).scaleY(has ? 1.25f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
+                if (has) keepVisible(slot);
+            });
+            pin.setOnClickListener(x -> {
+                RecentAppsOverlay.setPinned(host, pkg, !RecentAppsOverlay.isPinned(host, pkg));
+                paint.run();
+            });
+            FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(pinS, pinS, Gravity.TOP | Gravity.END);
+            pl.topMargin = -dp(6);
+            pl.rightMargin = -dp(6);
+            slot.addView(pin, pl);
+            pin.setNextFocusUpId(clearChip.getId());
+            pin.setNextFocusDownId(ic.getId());
+            ic.setNextFocusUpId(pin.getId());
+
+            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(cell, cell);
+            if (!first) sl.leftMargin = gap;
+            recentRow.addView(slot, sl);
         }
         if (recentRow.getChildCount() == 0) {
             TextView e = text(9.5f, "regular", 0xB3FFFFFF);
@@ -540,6 +699,7 @@ final class LiquidControl {
         }
     }
 
+    /** Closes every app that isn't pinned, then shows how much memory that freed. */
     private void clearRecents() {
         List<String> pkgs;
         try {
@@ -547,18 +707,67 @@ final class LiquidControl {
         } catch (Throwable t) {
             return;
         }
+        final long before = memory()[1];
         int n = 0;
         for (String p : pkgs) {
             if (RecentAppsOverlay.isPinned(host, p)) continue;
             RecentAppsOverlay.removeAndKillApp(host, p);
             n++;
         }
-        host.toast(n == 0 ? "Nothing to clear · pinned apps stay open" : "Closed " + n + (n == 1 ? " app" : " apps"));
         fillRecents();
+        final int closed = n;
+        if (n == 0) {
+            pill("Nothing to close · pinned apps stay open");
+            return;
+        }
+        host.handler.postDelayed(() -> {
+            long freed = Math.max(0, memory()[1] - before);
+            updateMemory();
+            String what = "Closed " + closed + (closed == 1 ? " app" : " apps");
+            pill(freed >= 5L * 1048576L ? what + String.format(Locale.ENGLISH, " · about %d MB freed", Math.round(freed / 1048576.0)) : what);
+        }, 1600);
+    }
+
+    /** A glass pill message to the left of the panel, as in the design. */
+    private void pill(String msg) {
+        FrameLayout root = layerRoot;
+        if (root == null) return;
+        TextView t = text(11f, "medium", Color.WHITE);
+        t.setText(msg);
+        t.setPadding(dp(18), dp(10), dp(18), dp(10));
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xD9283454, 0xD91C2440});
+        g.setCornerRadius(dp(22));
+        g.setStroke(Math.max(1, dp(0.8f)), 0x66FFFFFF);
+        t.setBackground(g);
+        t.setElevation(dp(8));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        lp.rightMargin = dp(380);  // centred in the space left of the panel
+        root.addView(t, lp);
+        t.setAlpha(0f);
+        t.setScaleX(0.9f);
+        t.setScaleY(0.9f);
+        t.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(MainActivity.LIFT).start();
+        host.handler.postDelayed(() -> t.animate().alpha(0f).setDuration(300).withEndAction(() -> {
+            if (t.getParent() instanceof ViewGroup) ((ViewGroup) t.getParent()).removeView(t);
+        }).start(), 3200);
+    }
+
+    // ---------------------------------------------------------------- wallpaper
+
+    /** Night Scenes or NASA's Astronomy Picture of the Day; applies straight away. */
+    void setWallpaper(String id) {
+        if (id.equals(Liquid.wallpaper(host))) return;
+        Liquid.putString(host, "wallpaper", id);
+        CustomMedia.resetOnlineDeck(CustomMedia.SCOPE_SCENE);
+        host.activeLiquidStamp = Liquid.stamp(host);
+        try {
+            sh.sceneView.syncSettings();
+        } catch (Throwable ignored) {
+        }
     }
 
     void onNotifsChanged() {
-        if (cpNotifBox != null && sh.sheetLayer != null) fillNotifs();
+        if (cpNotifBox != null && (sh.sheetLayer != null || ovLayer != null)) fillNotifs();
     }
 
     private void fillNotifs() {
@@ -599,9 +808,9 @@ final class LiquidControl {
             txl.leftMargin = dp(8);
             r.addView(tx, txl);
             focusable(r, dp(13), 1.02f);
-            r.setLongClickable(true);
+            r.setLongClickable(ovLayer == null);
             r.setOnClickListener(v -> openNotif(it));
-            r.setOnLongClickListener(v -> {
+            if (ovLayer == null) r.setOnLongClickListener(v -> {
                 List<String> labels = new ArrayList<>();
                 List<Runnable> acts = new ArrayList<>();
                 labels.add("Open");
@@ -628,8 +837,8 @@ final class LiquidControl {
     }
 
     private void openNotif(Notifs.Item it) {
-        sh.closeSheetImmediate();
-        cpNotifBox = null;
+        boolean over = ovLayer != null;
+        closeNow();
         try {
             if (it.open != null) {
                 it.open.send();
@@ -639,7 +848,10 @@ final class LiquidControl {
         } catch (Throwable ignored) {
         }
         MainActivity.AppEntry e = lh.entryFor(it.pkg);
-        if (e != null) host.launchAnimated(null, e);
+        if (e != null && e.launch != null) {
+            if (over) startOutside(new Intent(e.launch));
+            else host.launchAnimated(null, e);
+        }
     }
 
     // ================================================================== Look & feel
@@ -709,7 +921,7 @@ final class LiquidControl {
         LinearLayout top = new LinearLayout(host);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout seg = chips(new String[][]{{"basic", "Basic"}, {"advanced", "Advanced"}}, adv ? "advanced" : "basic", "mode:", id -> {
+        ViewGroup seg = chips(new String[][]{{"basic", "Basic"}, {"advanced", "Advanced"}}, adv ? "advanced" : "basic", "mode:", id -> {
             Liquid.putString(c, "mode", id);
             applyLive(GLASS);
             refill();
@@ -799,6 +1011,26 @@ final class LiquidControl {
                 if (Liquid.DOCK.equals(part)) magnification();
             }
         }
+        if (!adv || Liquid.WIDGETS.equals(lfPart)) clockSettings(c);
+
+        header("Wallpaper");
+        add(chips(new String[][]{{"scenes", "Night Scenes"}, {"apod", "Astronomy Picture of the Day"}}, Liquid.wallpaper(c), "wall:", id -> {
+            setWallpaper(id);
+            refill();
+        }));
+
+        tailSettings(c);
+
+        View target = focusKey != null ? lfKeys.get(focusKey) : null;
+        if (target == null) target = lfKeys.get(adv ? "mode:advanced" : "mode:basic");
+        if (target != null) {
+            View t = target;
+            t.post(t::requestFocus);
+        }
+    }
+
+    /** Home clock: in Basic, and in Advanced under Widgets only. */
+    private void clockSettings(Context c) {
         header("Home clock");
         String[][] faces = new String[AnalogClock.FACES.length][];
         for (int i = 0; i < faces.length; i++) faces[i] = new String[]{AnalogClock.FACES[i], AnalogClock.FACE_NAMES[i]};
@@ -834,8 +1066,10 @@ final class LiquidControl {
             applyLive(CLOCK);
             refill();
         }));
-        toggle("Second hand", "Ticks once a second", "t:secs", () -> Liquid.clockSeconds(c), v -> Liquid.putBool(c, "clock_seconds", v), CLOCK);
+        toggle("Second hand", "Sweeps smoothly", "t:secs", () -> Liquid.clockSeconds(c), v -> Liquid.putBool(c, "clock_seconds", v), CLOCK);
+    }
 
+    private void tailSettings(Context c) {
         header("Extras");
         toggle("Tilt and shine", "No extra memory", "t:tilt", () -> Liquid.tilt(c), v -> Liquid.putBool(c, "tilt", v), NONE);
         toggle("Weather on glass", "Rain and frost from the forecast", "t:wx", () -> Liquid.weatherFx(c), v -> Liquid.putBool(c, "weather_fx", v), WEATHER);
@@ -849,13 +1083,6 @@ final class LiquidControl {
             lh.resetSaver();
             refill();
         }));
-
-        View target = focusKey != null ? lfKeys.get(focusKey) : null;
-        if (target == null) target = lfKeys.get(adv ? "mode:advanced" : "mode:basic");
-        if (target != null) {
-            View t = target;
-            t.post(t::requestFocus);
-        }
     }
 
     private void magnification() {
@@ -877,23 +1104,12 @@ final class LiquidControl {
     }
 
     /** A row of chips side by side; the chosen one is white. OK picks, Left/Right move. */
-    private LinearLayout chips(String[][] items, String selected, String keyPrefix, Pick pick) {
-        LinearLayout wrap = new LinearLayout(host);
-        wrap.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout row = null;
-        int inRow = 0, maxRow = items.length > 5 ? 3 : 5;
+    private ViewGroup chips(String[][] items, String selected, String keyPrefix, Pick pick) {
+        Flow wrap = new Flow(host, dp(8), dp(8));
         for (String[] it : items) {
-            if (row == null || inRow >= maxRow) {
-                row = new LinearLayout(host);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setClipChildren(false);
-                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                if (wrap.getChildCount() > 0) rl.topMargin = dp(6);
-                wrap.addView(row, rl);
-                inRow = 0;
-            }
             boolean sel = it[0].equals(selected);
             TextView t = text(9.5f, "semibold", sel ? 0xFF0B1130 : Color.WHITE);
+            t.setEllipsize(null);  // chips wrap to a new line instead of being cut
             t.setText(it[1]);
             t.setGravity(Gravity.CENTER);
             t.setPadding(dp(11), dp(6), dp(11), dp(6));
@@ -913,14 +1129,62 @@ final class LiquidControl {
             });
             final String id = it[0];
             t.setOnClickListener(x -> pick.on(id));
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (inRow > 0) cl.leftMargin = dp(6);
-            row.addView(t, cl);
-            inRow++;
+            wrap.addView(t, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        wrap.setLayoutParams(wl);
         return wrap;
+    }
+
+    /** Lays children left to right and wraps to the next line when the width runs out. */
+    private static final class Flow extends ViewGroup {
+        final int hgap, vgap;
+
+        Flow(Context c, int hgap, int vgap) {
+            super(c);
+            this.hgap = hgap;
+            this.vgap = vgap;
+            setClipChildren(false);
+            setClipToPadding(false);
+        }
+
+        @Override protected void onMeasure(int ws, int hs) {
+            int max = MeasureSpec.getSize(ws) - getPaddingLeft() - getPaddingRight();
+            if (MeasureSpec.getMode(ws) == MeasureSpec.UNSPECIFIED) max = Integer.MAX_VALUE;
+            int x = 0, y = 0, lineH = 0, widest = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View v = getChildAt(i);
+                if (v.getVisibility() == GONE) continue;
+                measureChild(v, MeasureSpec.makeMeasureSpec(Math.max(0, max), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+                int w = v.getMeasuredWidth(), h = v.getMeasuredHeight();
+                if (x > 0 && x + w > max) {
+                    x = 0;
+                    y += lineH + vgap;
+                    lineH = 0;
+                }
+                x += w + hgap;
+                widest = Math.max(widest, x - hgap);
+                lineH = Math.max(lineH, h);
+            }
+            int width = MeasureSpec.getMode(ws) == MeasureSpec.EXACTLY ? MeasureSpec.getSize(ws) : widest + getPaddingLeft() + getPaddingRight();
+            setMeasuredDimension(width, y + lineH + getPaddingTop() + getPaddingBottom());
+        }
+
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            int max = r - l - getPaddingLeft() - getPaddingRight();
+            int x = 0, y = 0, lineH = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View v = getChildAt(i);
+                if (v.getVisibility() == GONE) continue;
+                int w = v.getMeasuredWidth(), h = v.getMeasuredHeight();
+                if (x > 0 && x + w > max) {
+                    x = 0;
+                    y += lineH + vgap;
+                    lineH = 0;
+                }
+                v.layout(getPaddingLeft() + x, getPaddingTop() + y, getPaddingLeft() + x + w, getPaddingTop() + y + h);
+                x += w + hgap;
+                lineH = Math.max(lineH, h);
+            }
+        }
     }
 
     private void glassSliders(String part) {

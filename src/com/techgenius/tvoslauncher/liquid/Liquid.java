@@ -240,6 +240,17 @@ public final class Liquid {
         return prefs(c).getInt("saver_after", 5);
     }
 
+    // ------------------------------------------------------------------ wallpaper
+
+    /** "scenes" (the original photo Night Scenes) or "apod" (NASA Astronomy Picture of the Day). */
+    public static String wallpaper(Context c) {
+        return prefs(c).getString("wallpaper", "scenes");
+    }
+
+    public static boolean isApod(Context c) {
+        return isOn(c) && "apod".equals(wallpaper(c));
+    }
+
     // ------------------------------------------------------------------ home clock
 
     public static String clockFace(Context c) {

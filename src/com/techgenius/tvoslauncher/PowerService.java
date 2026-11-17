@@ -1012,8 +1012,16 @@ public class PowerService extends AccessibilityService {
     }
 
     private boolean settingsLongFired;
+    /** While set, the Settings button goes to Google TV untouched (our own re-sent press). */
+    private static volatile long settingsPassUntil;
+
     private final Runnable settingsLong = () -> {
         settingsLongFired = true;
+        android.util.Log.i("tvOSKeys", "settings long press");
+        // Google TV opens its quick settings on this button: send the press again and let it through.
+        settingsPassUntil = SystemClock.uptimeMillis() + 4000;
+        if (LocalAdb.sendKeyEventViaAdbAsync(this, KeyEvent.KEYCODE_NOTIFICATION)) return;
+        settingsPassUntil = 0;
         boolean ok = Build.VERSION.SDK_INT >= 24 && performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
         if (!ok) ok = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
         if (!ok) {
@@ -1083,15 +1091,23 @@ public class PowerService extends AccessibilityService {
         // Liquid Glass: the remote's Settings button opens the Control Panel with the app in front
         // highlighted in Recent apps (unless the Button mapper has its own action for it).
         // Short press: Control Panel. Long press: Google TV's own quick settings.
-        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-            android.util.Log.i("tvOSKeys", "key " + code + " scan " + event.getScanCode());
-        }
+        android.util.Log.i("tvOSKeys", "key " + code + " scan " + event.getScanCode()
+                + (event.getAction() == KeyEvent.ACTION_DOWN ? " down" : " up") + " repeat " + event.getRepeatCount());
         // This remote's Settings button arrives as KEYCODE_NOTIFICATION (83, scan code 240).
         boolean settingsKey = code == KeyEvent.KEYCODE_SETTINGS || code == KeyEvent.KEYCODE_NOTIFICATION
                 || (code == KeyEvent.KEYCODE_UNKNOWN && event.getScanCode() == 240);
+        if (settingsKey && settingsPassUntil > SystemClock.uptimeMillis()) {
+            if (event.getAction() == KeyEvent.ACTION_UP) settingsPassUntil = 0;
+            return false;
+        }
         if (settingsKey && com.techgenius.tvoslauncher.liquid.Liquid.isOn(this)
                 && (code == KeyEvent.KEYCODE_UNKNOWN || !ButtonMapper.isKeyCustomMapped(this, code))) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() > 0 && !settingsLongFired) {
+                // Some remotes repeat while held: that's a long press too.
+                handler.removeCallbacks(settingsLong);
+                handler.post(settingsLong);
+                settingsLongFired = true;
+            } else if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 settingsLongFired = false;
                 handler.removeCallbacks(settingsLong);
                 handler.postDelayed(settingsLong, 600);

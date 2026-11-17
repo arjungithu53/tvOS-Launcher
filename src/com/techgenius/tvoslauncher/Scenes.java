@@ -462,6 +462,8 @@ public final class Scenes {
     }
 
     public static List<String> getEnabledSceneIds(Context c) {
+        // Liquid Glass with Astronomy Picture of the Day: the online-wallpaper slot, fed by NASA.
+        if (com.techgenius.tvoslauncher.liquid.Liquid.isApod(c)) return Collections.singletonList(REDDIT_WALLPAPER_ID);
         boolean customModeOn = CustomMedia.isCustomWallpaperEnabled(c, CustomMedia.SCOPE_SCENE);
         int customSubMode = CustomMedia.getCustomWallpaperSubMode(c, CustomMedia.SCOPE_SCENE);
         if (customModeOn) {
@@ -1253,7 +1255,7 @@ public final class Scenes {
             handler.removeCallbacks(rotateTick);
             if (canRotate()) {
                 long delayMs = getStaySeconds(getContext()) * 1000L;
-                if (REDDIT_WALLPAPER_ID.equals(baseSceneId(currentId))) {
+                if (REDDIT_WALLPAPER_ID.equals(baseSceneId(currentId)) && !com.techgenius.tvoslauncher.liquid.Liquid.isApod(getContext())) {
                     int mins = CustomMedia.getRedditIntervalMinutes(getContext(), CustomMedia.SCOPE_SCENE);
                     delayMs = Math.max(60_000L, mins * 60_000L);
                 }
