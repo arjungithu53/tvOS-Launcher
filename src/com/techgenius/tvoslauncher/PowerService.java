@@ -1018,13 +1018,13 @@ public class PowerService extends AccessibilityService {
     private final Runnable settingsLong = () -> {
         settingsLongFired = true;
         android.util.Log.i("tvOSKeys", "settings long press");
-        // Google TV opens its quick settings on this button: send the press again and let it through.
-        settingsPassUntil = SystemClock.uptimeMillis() + 4000;
-        if (LocalAdb.sendKeyEventViaAdbAsync(this, KeyEvent.KEYCODE_NOTIFICATION)) return;
-        settingsPassUntil = 0;
-        boolean ok = Build.VERSION.SDK_INT >= 24 && performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
-        if (!ok) ok = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
-        if (!ok) {
+        // The TV's full Settings app.
+        android.content.Intent i = new android.content.Intent()
+                .setClassName("com.android.tv.settings", "com.android.tv.settings.MainSettings")
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Throwable t) {
             try {
                 startActivity(new android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
             } catch (Throwable ignored) {
