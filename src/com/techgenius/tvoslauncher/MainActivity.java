@@ -293,6 +293,7 @@ public class MainActivity extends Activity {
         focusedIndex = Math.max(0, prefs.getInt("last_classic_idx", 0));
         activeLang = I18n.getLang(this);
         com.techgenius.tvoslauncher.liquid.Liquid.ensureDefault(this);
+        CustomMedia.apodMigrate(this);
         // Continue Watching is removed: clear its saved history once.
         if (!getSharedPreferences("liquid", MODE_PRIVATE).getBoolean("cw_removed", false)) {
             getSharedPreferences("liquid", MODE_PRIVATE).edit().putBoolean("cw_removed", true).apply();

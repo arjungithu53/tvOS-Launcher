@@ -1537,7 +1537,7 @@ public final class CustomMedia {
                         redditDeckIdxMap.put(scope, idx);
                     }
                     downloaded = apod ? apodCached(appCtx, imgUrl) : null;
-                    if (downloaded == null) downloaded = downloadWallpaperUrl(imgUrl);
+                    if (downloaded == null) downloaded = apod ? downloadApod(imgUrl) : downloadWallpaperUrl(imgUrl);
                     if (downloaded != null) {
                         gotUrl = imgUrl;
                         break;
@@ -1616,45 +1616,64 @@ public final class CustomMedia {
      * Up to 5 recent Astronomy Pictures of the Day (newest first, pictures only, no videos).
      * The list is fetched once per day and kept, so NASA's public key limits are never reached.
      */
+    private static final String APOD_HOME = "https://science.nasa.gov/apod/";
+    private static final java.util.regex.Pattern APOD_IMG = java.util.regex.Pattern.compile(
+            "<img[^>]+src=\"(https://assets\\.science\\.nasa\\.gov/[^\"]+)\"");
+
+    /**
+     * Up to 5 recent pictures, newest first, as "fullSizeUrl renditionUrl" entries.
+     * NASA moved APOD to science.nasa.gov and the old api.nasa.gov feed now returns the NASA logo
+     * for every day, so the pictures are read from the APOD pages themselves: today's page, then
+     * each "Yesterday's Image" page. Fetched once per day and kept.
+     */
     private static List<String> fetchApodUrls(Context c) {
         SharedPreferences p = c.getSharedPreferences("liquid", Context.MODE_PRIVATE);
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
-        f.setTimeZone(java.util.TimeZone.getTimeZone("America/New_York"));  // APOD's own calendar
+        java.util.TimeZone et = java.util.TimeZone.getTimeZone("America/New_York");  // APOD's own calendar
+        f.setTimeZone(et);
         long now = System.currentTimeMillis();
         String today = f.format(new java.util.Date(now));
-        String cached = p.getString("apod_urls", "");
-        if (today.equals(p.getString("apod_day", null)) && !cached.isEmpty()) {
+        String cached = p.getString("apod2_urls", "");
+        if (today.equals(p.getString("apod2_day", null)) && !cached.isEmpty()) {
             return new ArrayList<>(Arrays.asList(cached.split("\n")));
         }
         List<String> urls = new ArrayList<>();
-        java.net.HttpURLConnection conn = null;
-        try {
-            String start = f.format(new java.util.Date(now - 12L * 86_400_000L));
-            String api = "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&start_date=" + start + "&end_date=" + today;
-            conn = (java.net.HttpURLConnection) new java.net.URL(api).openConnection();
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(12000);
-            byte[] bytes;
-            try (InputStream in = conn.getInputStream()) {
-                bytes = Suggestions.readAll(in);
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.text.SimpleDateFormat slug = new java.text.SimpleDateFormat("yyyy-MMMM-d", java.util.Locale.US);
+        slug.setTimeZone(et);
+        String page = APOD_HOME;
+        long day = now;
+        for (int i = 0; i < 9 && page != null && urls.size() < 5; i++) {
+            String html = httpText(page);
+            if (html == null) {
+                android.util.Log.i("tvOSApod", page + " -> no page");
+                break;
             }
-            org.json.JSONArray arr = new org.json.JSONArray(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
-            for (int i = arr.length() - 1; i >= 0 && urls.size() < 5; i--) {
-                org.json.JSONObject o = arr.optJSONObject(i);
-                if (o == null || !"image".equals(o.optString("media_type"))) continue;
-                String u = o.optString("url", "");
-                if (u.startsWith("http")) urls.add(u);
+            String img = apodImage(html, i == 0);
+            android.util.Log.i("tvOSApod", page + " -> " + img);
+            if (img != null && seen.add(img)) {
+                int cut = img.indexOf("/jcr:content");
+                String full = cut > 0 ? img.substring(0, cut) : "";
+                if (!full.matches("(?i).*\\.(jpe?g|png)$")) full = "";
+                urls.add((full.isEmpty() ? "-" : full) + " " + img);
             }
-        } catch (Throwable ignored) {
-        } finally {
-            if (conn != null) conn.disconnect();
+            // Yesterday's page: .../image-article/apod-2026-november-16-<slug>/
+            day -= 86_400_000L;
+            String prefix = "https://science.nasa.gov/image-article/apod-" + slug.format(new java.util.Date(day)).toLowerCase(java.util.Locale.US) + "-";
+            int at = html.indexOf(prefix);
+            if (at < 0) {
+                page = null;
+            } else {
+                int end = html.indexOf('"', at);
+                page = end > at ? html.substring(at, end) : null;
+            }
         }
         if (urls.isEmpty()) {
-            // Offline or NASA unreachable: keep yesterday's pictures if there are any.
+            // Offline or NASA unreachable: keep the last pictures if there are any.
             if (!cached.isEmpty()) return new ArrayList<>(Arrays.asList(cached.split("\n")));
             return urls;
         }
-        p.edit().putString("apod_day", today).putString("apod_urls", android.text.TextUtils.join("\n", urls)).apply();
+        p.edit().putString("apod2_day", today).putString("apod2_urls", android.text.TextUtils.join("\n", urls)).apply();
         // Drop pictures that left the list.
         File dir = new File(c.getFilesDir(), "apod");
         File[] old = dir.listFiles();
@@ -1664,6 +1683,100 @@ public final class CustomMedia {
             for (File x : old) if (!keep.contains(x.getName())) x.delete();
         }
         return urls;
+    }
+
+    private static final java.util.regex.Pattern OG_IMAGE = java.util.regex.Pattern.compile(
+            "<meta[^>]*(?:property=\"og:image\"[^>]*content=\"([^\"]+)\"|content=\"([^\"]+)\"[^>]*property=\"og:image\")");
+
+    /**
+     * The day's picture on an APOD page. Day pages: their og:image is the picture. The APOD home
+     * page's og:image is stale, so there the first APOD image in the body is used.
+     */
+    private static String apodImage(String html, boolean home) {
+        if (!home) {
+            java.util.regex.Matcher og = OG_IMAGE.matcher(html);
+            if (og.find()) {
+                String u = og.group(1) != null ? og.group(1) : og.group(2);
+                if (u != null && u.startsWith("https://assets.science.nasa.gov/") && okPicture(u)) return u.replace("&amp;", "&");
+            }
+        }
+        int from = Math.max(0, html.indexOf("<body"));
+        String first = null;
+        java.util.regex.Matcher m = APOD_IMG.matcher(html);
+        m.region(from, html.length());
+        while (m.find()) {
+            String u = m.group(1).replace("&amp;", "&");
+            if (!okPicture(u)) continue;
+            if (u.contains("/cds/apod/")) return u;
+            if (first == null) first = u;
+        }
+        return home ? null : first;
+    }
+
+    private static boolean okPicture(String u) {
+        String low = u.toLowerCase(java.util.Locale.US);
+        return !low.contains("_annotated") && !low.contains("logo") && !low.endsWith(".svg") && !low.endsWith(".gif");
+    }
+
+    private static String httpText(String url) {
+        java.net.HttpURLConnection conn = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setInstanceFollowRedirects(true);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(12000);
+            conn.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+            if (conn.getResponseCode() != 200) return null;
+            try (InputStream in = conn.getInputStream()) {
+                return new String(Suggestions.readAll(in), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** Full-size picture when it is a sensible download (8 MB or less), else NASA's 1280 px copy. */
+    private static Bitmap downloadApod(String entry) {
+        String[] parts = entry.split(" ", 2);
+        String full = parts[0], rend = parts.length > 1 ? parts[1] : null;
+        if (!"-".equals(full) && full.startsWith("http")) {
+            java.net.HttpURLConnection conn = null;
+            try {
+                conn = (java.net.HttpURLConnection) new java.net.URL(full).openConnection();
+                conn.setRequestMethod("HEAD");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                long len = conn.getResponseCode() == 200 ? conn.getContentLengthLong() : -1;
+                conn.disconnect();
+                conn = null;
+                if (len > 0 && len <= 8L * 1048576L) {
+                    Bitmap b = downloadWallpaperUrl(full);
+                    if (b != null) return b;
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
+        return rend != null ? downloadWallpaperUrl(rend) : null;
+    }
+
+    /** One time: forget the NASA logo the old feed handed out. */
+    static void apodMigrate(Context c) {
+        SharedPreferences p = c.getSharedPreferences("liquid", Context.MODE_PRIVATE);
+        if (p.getBoolean("apod_v2", false)) return;
+        p.edit().putBoolean("apod_v2", true).remove("apod_day").remove("apod_urls").apply();
+        File dir = new File(c.getFilesDir(), "apod");
+        File[] old = dir.listFiles();
+        if (old != null) for (File x : old) x.delete();
+        if (com.techgenius.tvoslauncher.liquid.Liquid.isApod(c)) {
+            redditCacheFile(c, SCOPE_SCENE).delete();
+            prefs(c).edit().remove("reddit_wall_ts_" + SCOPE_SCENE).apply();
+            resetOnlineDeck(SCOPE_SCENE);
+        }
     }
 
     private static String apodName(String url) {
