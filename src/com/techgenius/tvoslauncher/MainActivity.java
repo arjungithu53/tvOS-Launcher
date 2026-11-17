@@ -582,6 +582,9 @@ public class MainActivity extends Activity {
                     wallView.setImageDrawable(null);
                     if (wb != null && !wb.isRecycled()) wb.recycle();
                 }
+                // Home is out of sight (an app is in front): drop the full-size scene photos and
+                // their glass copies too. onResume loads the current scene again.
+                if (sceneHome != null && !resumed) sceneHome.sceneView.releaseCache();
             } else if (sceneHome != null) {
                 sceneHome.sceneView.releaseCache();
             }
