@@ -84,9 +84,11 @@ public final class GlassIcon {
                 base = lifted[0];
                 symbolScale = 0.62f;
             } else {
-                base = average(small);
-                symbol = rounded(small, 0.22f);
-                symbolScale = 0.66f;
+                // No plain background to lift (gradients, photos, dark art: SonyLIV, ZEE5...):
+                // the whole icon becomes the glass face, so there's no band of mismatched colour.
+                base = edgeAverage(small);
+                symbol = Bitmap.createBitmap(small);
+                symbolScale = FILL;
             }
             if (small != square) small.recycle();
         }
@@ -107,6 +109,9 @@ public final class GlassIcon {
     }
 
     // ------------------------------------------------------------------ drawing
+
+    /** symbolScale value meaning "the picture fills the whole glass face". */
+    private static final float FILL = 1f;
 
     private static Bitmap compose(Bitmap symbol, int[] pal, float symbolScale, int s,
                                   String style, int depth, int clarity, boolean whiteSymbol) {
@@ -146,6 +151,30 @@ public final class GlassIcon {
         c.translate(0, gd * a * 0.045f);
         c.drawRoundRect(box, r, r, p);
         c.restore();
+
+        boolean fill = symbolScale >= FILL && symbol != null && !symbol.isRecycled();
+        if (fill) {
+            // The icon itself is the glass face, edge to edge.
+            Path face = new Path();
+            face.addRoundRect(box, r, r, Path.Direction.CW);
+            c.save();
+            c.clipPath(face);
+            Paint fp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            c.drawBitmap(symbol, null, box, fp);
+            // glass sheen on the top half, and a soft darkening towards the bottom edge
+            fp.setShader(new LinearGradient(0, box.top, 0, box.top + box.height() * 0.5f, 0x47FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+            c.drawRect(box, fp);
+            fp.setShader(new LinearGradient(0, box.bottom - box.height() * 0.3f, 0, box.bottom, 0x00000000, 0x33000000, Shader.TileMode.CLAMP));
+            c.drawRect(box, fp);
+            c.restore();
+            Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(Math.max(1f, a * 0.012f));
+            rim.setShader(new LinearGradient(0, box.top, 0, box.bottom, 0x8CFFFFFF, 0x1AFFFFFF, Shader.TileMode.CLAMP));
+            float in = rim.getStrokeWidth() / 2f;
+            c.drawRoundRect(new RectF(box.left + in, box.top + in, box.right - in, box.bottom - in), r - in, r - in, rim);
+            return out;
+        }
 
         // Body.
         p.setShader(new LinearGradient(0, box.top, 0, box.bottom, new int[]{light, mid, deep},
@@ -200,6 +229,26 @@ public final class GlassIcon {
             c.drawBitmap(symbol, null, dst, lp);
         }
         return out;
+    }
+
+    /** Average colour around the icon's edge (what borders the glass). */
+    static int edgeAverage(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        long r = 0, g = 0, bl = 0, n = 0;
+        int m = Math.max(2, w / 14);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (x >= m && x < w - m && y >= m && y < h - m) continue;
+                int c = b.getPixel(x, y);
+                if ((c >>> 24) < 128) continue;
+                r += (c >> 16) & 0xFF;
+                g += (c >> 8) & 0xFF;
+                bl += c & 0xFF;
+                n++;
+            }
+        }
+        if (n == 0) return average(b);
+        return 0xFF000000 | ((int) (r / n) << 16) | ((int) (g / n) << 8) | (int) (bl / n);
     }
 
     /** light, mid and deep glass colours from one base colour. */
