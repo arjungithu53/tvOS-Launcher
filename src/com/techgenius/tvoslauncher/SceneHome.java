@@ -2595,9 +2595,9 @@ final class SceneHome {
             Bitmap custom = CustomMedia.getCustomAppIcon(host, a.key, a.pkg);
             if (custom != null && !custom.isRecycled()) {
                 if ((custom.getPixel(0, 0) >>> 24) == 255) {
-                    return Bitmap.createScaledBitmap(custom, 384, 384, true);
+                    return Bitmap.createScaledBitmap(custom, 256, 256, true);
                 }
-                return CustomMedia.prepareFullBleedAppIcon(custom, 384, 384);
+                return CustomMedia.prepareFullBleedAppIcon(custom, 256, 256);
             }
         }
         String cacheKey = a.key != null ? a.key : a.pkg;
@@ -2615,7 +2615,7 @@ final class SceneHome {
     }
 
     private Bitmap buildFullSquareIcon(MainActivity.AppEntry a) {
-        int s = 384;
+        int s = 256;  // shown at ~90 px (≈125 magnified); 384 cost 0.56 MB per app
         Bitmap out = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
@@ -2682,7 +2682,7 @@ final class SceneHome {
                 a.icon.setBounds(old);
                 int cropSz = rawH;
                 int sx = (rawW - cropSz) / 2;
-                int zoom = 10;
+                int zoom = 7;
                 c.drawBitmap(tmp, new Rect(sx, 0, sx + cropSz, cropSz), new Rect(-zoom, -zoom, s + zoom, s + zoom), p);
                 tmp.recycle();
                 return out;
@@ -2752,9 +2752,9 @@ final class SceneHome {
         String assetName = mapPkgToLogoAsset(pkg);
         Bitmap bmp = null;
         if (assetName != null) {
-            Bitmap raw = Scenes.loadAssetBitmap(host, "app-logos/" + assetName, 384, 384);
+            Bitmap raw = Scenes.loadAssetBitmap(host, "app-logos/" + assetName, 256, 256);
             if (raw != null) {
-                int s = 384;
+                int s = 256;
                 Bitmap out = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
                 Canvas cv = new Canvas(out);
                 Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -2767,7 +2767,7 @@ final class SceneHome {
                     int topY = (s - badgeH) / 2;
                     cv.drawBitmap(raw, null, new Rect(padX, topY, padX + badgeW, topY + badgeH), p);
                 } else {
-                    int zoom = 9;
+                    int zoom = 6;
                     cv.drawBitmap(raw, null, new Rect(-zoom, -zoom, s + zoom, s + zoom), p);
                 }
                 if (raw != out) raw.recycle();
@@ -2781,7 +2781,7 @@ final class SceneHome {
     Bitmap getSpecialDockIconBitmap(String assetPath) {
         if (assetPath == null || assetPath.isEmpty()) return null;
         if (logoCache.containsKey(assetPath)) return logoCache.get(assetPath);
-        Bitmap raw = Scenes.loadAssetBitmap(host, assetPath, 384, 384);
+        Bitmap raw = Scenes.loadAssetBitmap(host, assetPath, 256, 256);
         if (raw != null) {
             logoCache.put(assetPath, raw);
         }
