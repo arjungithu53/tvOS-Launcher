@@ -371,6 +371,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (intent.getBooleanExtra("dump_heap", false)) {
+            // Memory snapshot for diagnosis (release builds can't be dumped from adb).
+            new Thread(() -> {
+                try {
+                    java.io.File f = new java.io.File(getExternalFilesDir(null), "h.hprof");
+                    android.os.Debug.dumpHprofData(f.getAbsolutePath());
+                    android.util.Log.i("tvOSMem", "heap dump written: " + f + " " + f.length());
+                } catch (Throwable t) {
+                    android.util.Log.i("tvOSMem", "heap dump failed: " + t);
+                }
+            }, "heap-dump").start();
+            return;
+        }
         if (intent.hasExtra("dock_scale")) {
             Scenes.setDockScalePercent(this, intent.getIntExtra("dock_scale", 100));
         }
