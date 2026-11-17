@@ -698,7 +698,8 @@ final class SearchPanel {
         int w = a.dp(105), h = a.dp(63);
         ImageView art = new ImageView(a);
         art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Drawable d = e.banner != null ? e.banner : e.icon;
+        Drawable bn = a.bannerFor(e);
+        Drawable d = bn != null ? bn : e.icon;
         art.setImageDrawable(d);
         View cell = cell(art, w, h, e.label, a.dp(8));
         cell.setOnClickListener(v -> {

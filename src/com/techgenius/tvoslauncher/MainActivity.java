@@ -3567,14 +3567,37 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    /** The app's banner; under Liquid Glass it is loaded the first time something asks for it. */
+    Drawable bannerFor(AppEntry e) {
+        if (e == null) return null;
+        if (e.banner != null || !activeLiquid) return e.banner;
+        try {
+            Bitmap cIcon = CustomMedia.hasCustomAppIcon(this, e.key, e.pkg) ? CustomMedia.getCustomAppIcon(this, e.key, e.pkg) : null;
+            if (cIcon != null && !cIcon.isRecycled()) {
+                e.banner = new BitmapDrawable(getResources(), CustomMedia.buildClassicBannerFromCustomIcon(cIcon, e.color));
+                return e.banner;
+            }
+            if (!TVOS_CARD_PKGS.contains(e.pkg) && e.launch != null && e.launch.getComponent() != null) {
+                try {
+                    e.banner = getPackageManager().getActivityBanner(e.launch.getComponent());
+                } catch (Throwable ignored) {
+                }
+            }
+            if (e.banner == null && e.launch != null) e.banner = new BitmapDrawable(getResources(), tvosCard(e));
+        } catch (Throwable ignored) {
+        }
+        return e.banner;
+    }
+
     Bitmap backdropSharp(AppEntry e, int w, int h) {
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
-        c.drawColor(e.banner != null ? 0xFF1C1C1E : e.color);
-        Drawable d = e.banner != null ? e.banner : e.icon;
+        Drawable bn = bannerFor(e);
+        c.drawColor(bn != null ? 0xFF1C1C1E : e.color);
+        Drawable d = bn != null ? bn : e.icon;
         if (d != null) {
             Rect old = d.copyBounds();
-            if (e.banner != null) {
+            if (bn != null) {
                 d.setBounds(0, 0, w, h);
             } else {
                 int s = h * 6 / 10;
@@ -3780,11 +3803,11 @@ public class MainActivity extends Activity {
                 Bitmap cIcon = CustomMedia.getCustomAppIcon(this, e.key, e.pkg);
                 if (cIcon != null && !cIcon.isRecycled()) {
                     e.icon = new BitmapDrawable(getResources(), cIcon);
-                    e.banner = new BitmapDrawable(getResources(), CustomMedia.buildClassicBannerFromCustomIcon(cIcon, e.color));
+                    if (!activeLiquid) e.banner = new BitmapDrawable(getResources(), CustomMedia.buildClassicBannerFromCustomIcon(cIcon, e.color));
                     continue;
                 }
             }
-            if (e.banner == null || TVOS_CARD_PKGS.contains(e.pkg)) {
+            if (!activeLiquid && (e.banner == null || TVOS_CARD_PKGS.contains(e.pkg))) {
                 e.banner = new BitmapDrawable(getResources(), tvosCard(e));
             }
         }
@@ -3910,7 +3933,8 @@ public class MainActivity extends Activity {
                     ? I18n.s(this, "Settings", "Ayarlar")
                     : ri.loadLabel(pm).toString();
             e.label = getCustomAppName(this, e.key, e.pkg, e.defaultLabel);
-            e.banner = leanback ? ai.loadBanner(pm) : null;
+            // Liquid Glass shows icons; banners load on demand (bannerFor) instead of for every app.
+            e.banner = leanback && !activeLiquid ? ai.loadBanner(pm) : null;
             e.icon = ri.loadIcon(pm);
             e.color = tintFrom(e.icon);
             e.system = (ai.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;

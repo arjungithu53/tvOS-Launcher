@@ -985,6 +985,27 @@ public final class Scenes {
             if (noClock == v) return;
             noClock = v;
             cachedFrameKey = null;
+            if (v) {
+                // Without the big clock the foreground cut-out, the clock glass and the full-screen
+                // frame copy are never drawn: free them (about 8 MB each at 1080p, more at 4K).
+                for (LoadedScene ls : cache.values()) {
+                    if (ls == null) continue;
+                    if (ls.fg != null && !ls.fg.isRecycled()) ls.fg.recycle();
+                    if (ls.glassBaked != null && !ls.glassBaked.isRecycled()) ls.glassBaked.recycle();
+                    if (ls.glassWetBaked != null && !ls.glassWetBaked.isRecycled()) ls.glassWetBaked.recycle();
+                    ls.fg = null;
+                    ls.glassBaked = null;
+                    ls.glassWetBaked = null;
+                    ls.glassShader = null;
+                    ls.glassWetShader = null;
+                }
+                if (cachedFrameBmp != null && !cachedFrameBmp.isRecycled()) cachedFrameBmp.recycle();
+                cachedFrameBmp = null;
+            } else {
+                // Scenes loaded without their clock parts: load them again.
+                for (LoadedScene ls : cache.values()) if (ls != null) ls.recycle();
+                cache.clear();
+            }
             invalidate();
         }
         private int folderFlipCounter = 0;
@@ -1361,7 +1382,7 @@ public final class Scenes {
                     ls.ownsBg = true;
                     ls.bg = loadAssetBitmap(c, ALL[0].bgAsset, 1920, 1080);
                 }
-                bakeLoadedGlassFromBg(ls, false);
+                if (!noClock) bakeLoadedGlassFromBg(ls, false);
                 cache.put(id, ls);
                 return ls;
             }
@@ -1390,7 +1411,7 @@ public final class Scenes {
                         invalidate();
                     });
                 }
-                bakeLoadedGlassFromBg(ls, false);
+                if (!noClock) bakeLoadedGlassFromBg(ls, false);
                 cache.put(id, ls);
                 return ls;
             }
@@ -1408,7 +1429,7 @@ public final class Scenes {
                     ls.ownsBg = true;
                     ls.bg = loadAssetBitmap(c, ALL[0].bgAsset, 1920, 1080);
                 }
-                bakeLoadedGlassFromBg(ls, false);
+                if (!noClock) bakeLoadedGlassFromBg(ls, false);
                 cache.put(id, ls);
                 return ls;
             }
@@ -1427,7 +1448,7 @@ public final class Scenes {
                 if (ls.bg == null) {
                     ls.bg = loadAssetBitmap(c, ALL[0].bgAsset, 1920, 1080);
                 }
-                bakeLoadedGlassFromBg(ls, false);
+                if (!noClock) bakeLoadedGlassFromBg(ls, false);
                 cache.put(id, ls);
                 return ls;
             }
@@ -1438,6 +1459,11 @@ public final class Scenes {
                 ls.bg = createGradientBitmap(base, 1920, 1080);
             } else {
                 ls.bg = loadAssetBitmap(c, spec.bgAsset, 1920, 1080);
+            }
+            if (noClock) {
+                // Liquid Glass: only the background is drawn.
+                cache.put(id, ls);
+                return ls;
             }
             if (spec.fgAsset != null) {
                 ls.fg = loadAssetBitmap(c, spec.fgAsset, 1920, 1080);
@@ -1631,7 +1657,10 @@ public final class Scenes {
                 }
             } else {
                 LoadedScene cur = ensureLoaded(currentId);
-                if (cur != null) {
+                if (cur != null && noClock) {
+                    // Just the photo and a gradient: drawing it directly is cheap, so no frame copy.
+                    drawScene(canvas, cur, w, h, 1f);
+                } else if (cur != null) {
                     Context ctx = getContext();
                     int cSlot = Math.max(1, customSlotFromId(baseSceneId(currentId)));
                     String frameKey = currentId + "|" + lockScreenMode + "|" + classicClockOnlyMode + "|"
