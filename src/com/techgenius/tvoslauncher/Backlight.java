@@ -182,4 +182,55 @@ final class Backlight {
             }
         }
     }
+
+    /** Opens the picture screen with the Backlight row already focused (found through the accessibility service). */
+    static void openBacklight(Context c) {
+        openPicture(c);
+        final PowerService svc = PowerService.instance;
+        if (svc == null) return;
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        final int[] tries = {0};
+        h.postDelayed(new Runnable() {
+            @Override public void run() {
+                int r = focusRow(svc, "backlight");
+                Log.i(TAG, "focus backlight try " + tries[0] + ": " + r);
+                if (r == 1 || ++tries[0] > 24) return;
+                h.postDelayed(this, 250);
+            }
+        }, 400);
+    }
+
+    /** 1 focused, 0 not there yet (scrolled if it could), -1 no window. */
+    private static int focusRow(android.accessibilityservice.AccessibilityService svc, String word) {
+        android.view.accessibility.AccessibilityNodeInfo root;
+        try {
+            root = svc.getRootInActiveWindow();
+        } catch (Throwable t) {
+            return -1;
+        }
+        if (root == null || root.getPackageName() == null || !PICTURE_PKG.contentEquals(root.getPackageName())) return -1;
+        List<android.view.accessibility.AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(word);
+        for (android.view.accessibility.AccessibilityNodeInfo n : hits) {
+            CharSequence t = n.getText();
+            if (t == null || !t.toString().toLowerCase(Locale.ROOT).startsWith(word)) continue;
+            android.view.accessibility.AccessibilityNodeInfo x = n;
+            while (x != null && !x.isFocusable()) x = x.getParent();
+            if (x == null) continue;
+            if (x.isFocused() || x.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)) return 1;
+        }
+        // Not laid out yet: page the list down.
+        android.view.accessibility.AccessibilityNodeInfo list = scrollable(root);
+        if (list != null) list.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+        return 0;
+    }
+
+    private static android.view.accessibility.AccessibilityNodeInfo scrollable(android.view.accessibility.AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        if (n.isScrollable()) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            android.view.accessibility.AccessibilityNodeInfo r = scrollable(n.getChild(i));
+            if (r != null) return r;
+        }
+        return null;
+    }
 }

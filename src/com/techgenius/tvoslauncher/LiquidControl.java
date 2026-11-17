@@ -426,7 +426,7 @@ final class LiquidControl {
         blRefresh[0] = slider(sl, "Backlight", "ambient", () -> Math.max(0, bl[0]), v -> {
             if (bl[0] < 0) {
                 closeNow();
-                Backlight.openPicture(host);
+                Backlight.openBacklight(host);
                 return;
             }
             bl[0] = v;
