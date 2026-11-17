@@ -1678,6 +1678,11 @@ public class SettingsActivity extends Activity {
     }
 
     void pageButtonMapper() {
+        section("TV CURSOR");
+        row("TV Cursor",
+                () -> com.techgenius.tvoslauncher.cursor.TvCursor.isOn(this)
+                        ? "On · " + com.techgenius.tvoslauncher.cursor.TvCursor.toggleHintFor(this) : "Off",
+                () -> startActivity(new Intent(this, com.techgenius.tvoslauncher.cursor.CursorSettingsActivity.class)));
         section(tr("ACCESSIBILITY SERVICE", "ERİŞİLEBİLİRLİK SERVİSİ"));
         row(tr("Button Mapper accessibility service", "Düğme Eşleyici erişilebilirlik servisi"),
                 () -> ButtonMapper.isServiceEnabled(this)

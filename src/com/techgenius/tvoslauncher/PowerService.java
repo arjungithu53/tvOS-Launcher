@@ -385,6 +385,13 @@ public class PowerService extends AccessibilityService {
             }
         } catch (Throwable ignored) {
         }
+        cursor = new com.techgenius.tvoslauncher.cursor.TvCursor(this);
+        try {
+            cursor.start();
+        } catch (Throwable t) {
+            cursor = null;
+        }
+        syncCursorInfo();
         syncVolumeHoldFix();
         syncCaffeine(this);
         LocalAdb.ensureKeepAliveWatchdog(this);
@@ -397,8 +404,43 @@ public class PowerService extends AccessibilityService {
         }
     }
 
+    /** TV Cursor (the remote-driven mouse cursor), hosted by this service. */
+    private com.techgenius.tvoslauncher.cursor.TvCursor cursor;
+
+    /**
+     * While the cursor feature is on, ask apps for their full view tree: browsers such as Brave
+     * only publish the links and buttons inside web pages to a service that listens for all
+     * events and includes "not important" views. Off again when the cursor is off.
+     */
+    public void syncCursorInfo() {
+        try {
+            AccessibilityServiceInfo info = getServiceInfo();
+            if (info == null) return;
+            boolean on = cursor != null && com.techgenius.tvoslauncher.cursor.TvCursor.isOn(this);
+            int extraFlags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+                    | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
+            info.notificationTimeout = on ? 80 : 0;  // the extra events come in floods; batch them
+            if (on) {
+                info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
+                info.flags |= extraFlags;
+            } else {
+                info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+                info.flags &= ~extraFlags;
+            }
+            setServiceInfo(info);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public static void cursorSettingChanged() {
+        PowerService s = instance;
+        if (s != null) s.syncCursorInfo();
+    }
+
     @Override
     public boolean onUnbind(Intent intent) {
+        if (cursor != null) cursor.stop();
+        cursor = null;
         unregisterVolumeLongPressListener();
         stopVolumeWatcher();
         stopAudioDumpVolumeWatcher();
@@ -408,6 +450,8 @@ public class PowerService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        if (cursor != null) cursor.stop();
+        cursor = null;
         unregisterVolumeLongPressListener();
         stopVolumeWatcher();
         stopAudioDumpVolumeWatcher();
@@ -1062,6 +1106,11 @@ public class PowerService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         if (event == null) return false;
+        // TV Cursor first: while it's showing, arrows and OK move and click it.
+        try {
+            if (cursor != null && cursor.onKeyEvent(event)) return true;
+        } catch (Throwable ignored) {
+        }
         int code = event.getKeyCode();
         // Fast-bypass D-Pad arrow keys immediately so holding down arrow keys never stutters or gets stuck
         if (code == KeyEvent.KEYCODE_DPAD_UP
