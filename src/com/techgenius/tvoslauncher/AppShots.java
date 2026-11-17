@@ -190,12 +190,21 @@ final class AppShots {
                         if (!n.isEmpty()) running.add(n);
                     }
                     String own = app.getPackageName();
+                    Map<String, Integer> tasks = new HashMap<>();
                     String[] blocks = parts[0].split("Recent #");
                     for (int b = 1; b < blocks.length; b++) {
                         String pkg = taskPkg(blocks[b]);
-                        if (pkg == null || pkg.equals(own) || !running.contains(pkg) || Perms.isAnySystemLauncherPackage(app, pkg)) continue;
-                        Integer n = next.get(pkg);
-                        next.put(pkg, n == null ? 1 : n + 1);
+                        if (pkg == null || pkg.equals(own) || Perms.isAnySystemLauncherPackage(app, pkg)) continue;
+                        Integer n = tasks.get(pkg);
+                        tasks.put(pkg, n == null ? 1 : n + 1);
+                    }
+                    // Dots follow the Control Panel's Recent apps: an app there that still has a window
+                    // or a running process. Apps you cleared don't get a dot even if Android keeps
+                    // their process or an old task around.
+                    for (String pkg : RecentAppsOverlay.getRecentPackages(app, 12)) {
+                        Integer n = tasks.get(pkg);
+                        if (n != null) next.put(pkg, n);
+                        else if (running.contains(pkg)) next.put(pkg, 1);
                     }
                     ok = true;
                 }
