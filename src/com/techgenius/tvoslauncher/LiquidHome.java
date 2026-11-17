@@ -1384,6 +1384,8 @@ final class LiquidHome {
 
     private View infoButton(LinearLayout row, String label, Runnable r) {
         TextView b = text(10f, "semibold", Color.WHITE);
+        b.setText(label);
+        b.setSingleLine(true);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(14), dp(8), dp(14), dp(8));
         GlassPanel g = glass(Liquid.BUTTONS, dp(15));
@@ -1393,8 +1395,10 @@ final class LiquidHome {
         b.setOnClickListener(v -> r.run());
         b.setOnFocusChangeListener((v, has) -> {
             g.setLit(has);
-            b.setForeground(has ? ring(dp(15)) : null);
-            v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
+            // A TextView's foreground doesn't show here: the ring goes on top of the glass instead.
+            b.setBackground(has ? new android.graphics.drawable.LayerDrawable(new Drawable[]{g, ring(dp(15))}) : g);
+            v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
+                    .setDuration(has ? 420 : 180).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         if (row.getChildCount() > 0) lp.leftMargin = dp(8);

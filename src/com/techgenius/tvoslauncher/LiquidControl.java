@@ -686,7 +686,7 @@ final class LiquidControl {
         long[] m = memory();
         if (m[0] <= 0) return;
         long used = m[0] - m[1];
-        memText.setText(String.format(Locale.ENGLISH, "Memory  %.1f of %.1f GB in use", used / 1073741824.0, m[0] / 1073741824.0));
+        memText.setText(String.format(Locale.ENGLISH, "Memory  %.3f of %.3f GB in use", used / 1073741824.0, m[0] / 1073741824.0));
         memBar.value = used / (float) m[0];
         memBarView.invalidate();
     }
@@ -884,7 +884,7 @@ final class LiquidControl {
         }
     }
 
-    /** A glass pill message to the left of the panel, as in the design. */
+    /** A glass pill message at the bottom centre of the screen. */
     private TextView pill(String msg) {
         return pill(msg, 3200);
     }
@@ -900,8 +900,9 @@ final class LiquidControl {
         g.setStroke(Math.max(1, dp(0.8f)), 0x66FFFFFF);
         t.setBackground(g);
         t.setElevation(dp(8));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-        lp.rightMargin = dp(380);  // centred in the space left of the panel
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lp.bottomMargin = dp(36);
         root.addView(t, lp);
         t.setAlpha(0f);
         t.setScaleX(0.9f);
