@@ -1373,7 +1373,10 @@ public final class HomeDashboard {
         if (WIDGET_PRAYER.equals(id)) card = createPrayerWidgetCard(host);
         else if (WIDGET_FOOTBALL.equals(id)) card = createFootballWidgetCard(host);
         else if (WIDGET_RELEASES.equals(id)) card = createReleasesWidgetCard(host);
-        else if (WIDGET_WEATHER.equals(id)) card = createWeatherWidgetCard(host, nav);
+        else if (WIDGET_WEATHER.equals(id)) {
+            // Liquid Glass has its own weather card.
+            if (!com.techgenius.tvoslauncher.liquid.Liquid.isOn(host)) card = createWeatherWidgetCard(host, nav);
+        }
         else if (WIDGET_CRICKET.equals(id)) card = createCricketWidgetCard(host);
         else if (WIDGET_NEWS.equals(id)) card = createNewsWidgetCard(host);
         else if (WIDGET_TOP_MEDIA.equals(id)) card = createTopMediaWidgetCard(host);
@@ -1423,11 +1426,18 @@ public final class HomeDashboard {
             }
         };
         float r = dp(host, 15);
-        MainActivity.LiquidGlass glass = new MainActivity.LiquidGlass(
-                r, 0x5C1E141C, host.glassSource, host.screenW, host.screenH, host.unit);
-        glass.lens = dp(host, 6);
-        glass.rimStrength = 0.42f;
-        card.setBackground(glass);
+        final com.techgenius.tvoslauncher.liquid.GlassPanel liquidGlass =
+                com.techgenius.tvoslauncher.liquid.Liquid.isOn(host) && host.sceneHome != null
+                        ? host.sceneHome.liquidGlass(com.techgenius.tvoslauncher.liquid.Liquid.WIDGETS, r) : null;
+        if (liquidGlass != null) {
+            card.setBackground(liquidGlass);
+        } else {
+            MainActivity.LiquidGlass glass = new MainActivity.LiquidGlass(
+                    r, 0x5C1E141C, host.glassSource, host.screenW, host.screenH, host.unit);
+            glass.lens = dp(host, 6);
+            glass.rimStrength = 0.42f;
+            card.setBackground(glass);
+        }
 
         final GradientDrawable focusRing = new GradientDrawable();
         focusRing.setCornerRadius(r);
@@ -1441,6 +1451,7 @@ public final class HomeDashboard {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
                 card.setForeground(hasFocus ? focusRing : null);
+                if (liquidGlass != null) liquidGlass.setLit(hasFocus);
                 v.animate()
                         .scaleX(hasFocus ? 1.035f : 1.0f)
                         .scaleY(hasFocus ? 1.035f : 1.0f)

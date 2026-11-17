@@ -820,9 +820,31 @@ final class LiquidHome {
         View f = host.getCurrentFocus();
         boolean inDock = sh.dockTiles.contains(f);
         boolean topBtn = f == sh.weatherBtn || f == sh.moonBtn;
+        int dashIdx = sh.dashboardCards.indexOf(f);
+        if (dashIdx >= 0) {
+            lastDashIdx = dashIdx;
+            if (k == KeyEvent.KEYCODE_DPAD_UP) {
+                if (down) focusFirst(playCard, weatherCard, sh.moonBtn);
+                return true;
+            }
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (down) sh.focusDock(sh.focusedDockIdx);
+                return true;
+            }
+            if (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (com.techgenius.tvoslauncher.HomeDashboard.isMovingWidget()) return false;
+                int j = dashIdx + (k == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+                if (down && j >= 0 && j < sh.dashboardCards.size()) sh.dashboardCards.get(j).requestFocus();
+                return true;
+            }
+            return false;
+        }
         if (k == KeyEvent.KEYCODE_DPAD_UP) {
             if (inDock) {
-                if (down) focusFirst(playCard, weatherCard, sh.moonBtn);
+                if (down) {
+                    if (dashShowing()) focusDash();
+                    else focusFirst(playCard, weatherCard, sh.moonBtn);
+                }
                 return true;
             }
             if (f == playCard) {
@@ -847,12 +869,16 @@ final class LiquidHome {
             if (f == weatherCard) {
                 if (down) {
                     if (visible(playCard)) playCard.requestFocus();
+                    else if (dashShowing()) focusDash();
                     else sh.focusDock(sh.focusedDockIdx);
                 }
                 return true;
             }
             if (f == playCard) {
-                if (down) sh.focusDock(sh.focusedDockIdx);
+                if (down) {
+                    if (dashShowing()) focusDash();
+                    else sh.focusDock(sh.focusedDockIdx);
+                }
                 return true;
             }
             if (inDock) return true;
@@ -862,6 +888,61 @@ final class LiquidHome {
             return true;
         }
         return false;
+    }
+
+    // ---------------------------------------------------------------- cards above the dock
+
+    private int lastDashIdx;
+
+    /** Puts the Night Scenes cards (cricket, news, top movies…) in a row just above the dock. */
+    void placeDashboard(View box) {
+        if (!(box.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) box.getLayoutParams();
+        lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        lp.topMargin = 0;
+        lp.leftMargin = dp(40);
+        lp.rightMargin = dp(40);
+        lp.bottomMargin = dp(150);
+        box.setLayoutParams(lp);
+        box.post(() -> {
+            // Sit 16 dp above the dock's row, wherever the dock ends up.
+            if (sh.dockTiles.isEmpty()) return;
+            View row = (View) sh.dockTiles.get(0).getParent();
+            int top = 0;
+            View v = row;
+            while (v != null && v != sh.overlay) {
+                top += v.getTop();
+                v = v.getParent() instanceof View ? (View) v.getParent() : null;
+            }
+            if (v == null || sh.overlay.getHeight() <= 0) return;
+            int want = sh.overlay.getHeight() - top + dp(16);
+            if (want > 0 && want != lp.bottomMargin) {
+                lp.bottomMargin = want;
+                box.setLayoutParams(lp);
+            }
+            box.post(() -> avoidClock(box));
+        });
+    }
+
+    /** Lifts the clock if its date line would run into the cards. */
+    private void avoidClock(View box) {
+        if (clockBox == null || clockBox.getChildCount() == 0) return;
+        View c = clockBox.getChildAt(0);
+        float clockBottom = c.getBottom();   // clockBox fills the screen, as the overlay does
+        float cardsTop = sh.overlay.getHeight() - ((FrameLayout.LayoutParams) box.getLayoutParams()).bottomMargin - box.getHeight();
+        float lift = Math.max(0, clockBottom - cardsTop + dp(14));
+        lift = Math.min(lift, Math.max(0, c.getTop() - dp(24)));
+        c.animate().translationY(-lift).setDuration(260).setInterpolator(MainActivity.LIFT).start();
+    }
+
+    private boolean dashShowing() {
+        return sh.isDashboardShowing() && !sh.dashboardCards.isEmpty();
+    }
+
+    private void focusDash() {
+        int n = sh.dashboardCards.size();
+        sh.dashboardCards.get(Math.max(0, Math.min(n - 1, lastDashIdx))).requestFocus();
     }
 
     private void focusFirst(View... vs) {

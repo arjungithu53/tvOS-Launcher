@@ -1131,7 +1131,10 @@ final class LiquidControl {
                 if (Liquid.DOCK.equals(part)) magnification();
             }
         }
-        if (!adv || Liquid.WIDGETS.equals(lfPart)) clockSettings(c);
+        if (!adv || Liquid.WIDGETS.equals(lfPart)) {
+            clockSettings(c);
+            cardSettings(c);
+        }
 
         header("Wallpaper");
         add(chips(new String[][]{{"scenes", "Night Scenes"}, {"apod", "Astronomy Picture of the Day"}}, Liquid.wallpaper(c), "wall:", id -> {
@@ -1187,6 +1190,31 @@ final class LiquidControl {
             refill();
         }));
         toggle("Second hand", "Sweeps smoothly", "t:secs", () -> Liquid.clockSeconds(c), v -> Liquid.putBool(c, "clock_seconds", v), CLOCK);
+    }
+
+    /** The Night Scenes cards, shown in a row above the dock. */
+    private void cardSettings(Context c) {
+        header("Cards above the dock");
+        toggle("Show cards", "Live scores, news and what's popular", "t:cards",
+                () -> HomeDashboard.isEnabled(c), v -> {
+                    HomeDashboard.setEnabled(c, v);
+                    lh.rebuildClock();
+                    sh.refreshDashboard();
+                }, NONE);
+        String[][] ids = {
+                {HomeDashboard.WIDGET_CRICKET, "Live cricket scores"},
+                {HomeDashboard.WIDGET_NEWS, "Live news"},
+                {HomeDashboard.WIDGET_TOP_MEDIA, "Top movies & series"},
+                {HomeDashboard.WIDGET_FOOTBALL, "Football scores"},
+                {HomeDashboard.WIDGET_RELEASES, "New releases"},
+                {HomeDashboard.WIDGET_PRAYER, "Prayer times"}};
+        for (String[] w : ids) {
+            toggle(w[1], "", "t:card_" + w[0], () -> HomeDashboard.isWidgetEnabledById(c, w[0]), v -> {
+                HomeDashboard.setWidgetEnabledById(c, w[0], v);
+                lh.rebuildClock();
+                sh.refreshDashboard();
+            }, NONE);
+        }
     }
 
     private void tailSettings(Context c) {
@@ -1392,6 +1420,7 @@ final class LiquidControl {
         tx.addView(l);
         TextView h = text(7.5f, "regular", 0xB3FFFFFF);
         h.setText(hint);
+        if (hint.isEmpty()) h.setVisibility(View.GONE);
         tx.addView(h);
         r.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView sw = text(9f, "semibold", Color.WHITE);

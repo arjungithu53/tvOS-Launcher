@@ -645,7 +645,11 @@ final class SceneHome {
         if (f != null && dashboardCards.contains(f)) {
             return;
         }
-        if ((isAnyAppDockTileFocused() && !HomeDashboard.isShowWhenNoCw(host)) || isShelfShowing() || isAnyPopupShowing()) {
+        // Liquid Glass keeps the cards up while the dock has focus (they sit just above it).
+        boolean hide = Liquid.isOn(host)
+                ? isAnyPopupShowing()
+                : (isAnyAppDockTileFocused() && !HomeDashboard.isShowWhenNoCw(host)) || isShelfShowing() || isAnyPopupShowing();
+        if (hide) {
             hideDashboard();
         } else {
             showDashboard();
@@ -665,7 +669,7 @@ final class SceneHome {
     }
 
     void showDashboard() {
-        if (dashboardBox == null || !HomeDashboard.isEnabled(host) || Liquid.isOn(host) || moreExpanded || moveDockIdx >= 0 || sheetLayer != null) {
+        if (dashboardBox == null || !HomeDashboard.isEnabled(host) || moreExpanded || moveDockIdx >= 0 || sheetLayer != null) {
             hideDashboard();
             return;
         }
@@ -694,6 +698,7 @@ final class SceneHome {
         }
         dashboardBox.addView(row, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (liquid != null && Liquid.isOn(host)) liquid.placeDashboard(dashboardBox);
         boolean wasVisible = dashboardBox.getVisibility() == View.VISIBLE && !dashboardHiding;
         dashboardHiding = false;
         dashboardBox.animate().cancel();
