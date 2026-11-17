@@ -123,6 +123,7 @@ final class LiquidHome {
 
     void onResume() {
         if (control.isOverlayShowing()) control.closeOverlay();
+        AppShots.refreshOpen(host, this::updateDots);
         refreshWeather();
         updateBadge();
         hideSaver();
@@ -636,6 +637,9 @@ final class LiquidHome {
         magFocus = -1;
         windowStart = -1;
         ensureWindow(sh.focusedDockIdx);
+        row.setClipChildren(false);
+        if (row.getParent() instanceof ViewGroup) ((ViewGroup) row.getParent()).setClipChildren(false);
+        updateDots();
     }
 
     private float gap(int size) {
@@ -674,7 +678,9 @@ final class LiquidHome {
         if (has) {
             ensureWindow(index);
             magnify(index);
+            schedulePreview(index);
         } else {
+            hideDockPreview();
             sh.overlay.post(() -> {
                 boolean any = false;
                 for (View t : sh.dockTiles) if (t.isFocused()) any = true;
@@ -791,6 +797,7 @@ final class LiquidHome {
     boolean dispatchKey(KeyEvent ev) {
         int k = ev.getKeyCode();
         boolean down = ev.getAction() == KeyEvent.ACTION_DOWN;
+        if (dockPreview != null && down) hideDockPreview();
         if (saverLayer != null) {
             if (!down) hideSaver();
             return true;
@@ -1463,5 +1470,171 @@ final class LiquidHome {
 
     boolean isSaverShowing() {
         return saverLayer != null;
+    }
+
+    // ================================================================== window previews
+
+    /** A glass card with the app's last screenshot and its name; the picture is freed when it closes. */
+    View previewCard(MainActivity.AppEntry a, int width, android.graphics.drawable.Drawable bg) {
+        LinearLayout card = new LinearLayout(host);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(7), dp(7), dp(7), dp(8));
+        card.setBackground(bg);
+        card.setElevation(dp(12));
+        ImageView iv = new ImageView(host);
+        iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        iv.setOutlineProvider(host.roundedOutline(new float[]{dp(9)}));
+        iv.setClipToOutline(true);
+        iv.setBackgroundColor(0x33000000);
+        int iw = width - dp(14);
+        card.addView(iv, new LinearLayout.LayoutParams(iw, iw * 9 / 16));
+        LinearLayout row = new LinearLayout(host);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView ic = new ImageView(host);
+        sh.applyLiquidIconTo(ic, a, dp(16));
+        row.addView(ic, new LinearLayout.LayoutParams(dp(16), dp(16)));
+        TextView t = text(9.5f, "semibold", Color.WHITE);
+        int n = AppShots.windows(a.pkg);
+        t.setText(a.label + (n > 1 ? "  ·  " + n + " windows" : ""));
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tl.leftMargin = dp(7);
+        row.addView(t, tl);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rl.topMargin = dp(7);
+        rl.leftMargin = dp(2);
+        card.addView(row, rl);
+        final Bitmap[] held = {null};
+        final String pkg = a.pkg;
+        host.io.execute(() -> {
+            Bitmap b = AppShots.load(host, pkg);
+            host.handler.post(() -> {
+                if (b == null) return;
+                if (!card.isAttachedToWindow()) {
+                    b.recycle();
+                    return;
+                }
+                held[0] = b;
+                iv.setImageBitmap(b);
+            });
+        });
+        card.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View v) {}
+
+            @Override public void onViewDetachedFromWindow(View v) {
+                iv.setImageDrawable(null);
+                if (held[0] != null) held[0].recycle();
+                held[0] = null;
+            }
+        });
+        return card;
+    }
+
+    /** Fade a card in, rising a little. */
+    static void popIn(View v, float rise) {
+        v.setAlpha(0f);
+        v.setTranslationY(rise);
+        v.setScaleX(0.94f);
+        v.setScaleY(0.94f);
+        v.animate().alpha(1f).translationY(0).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(MainActivity.LIFT).start();
+    }
+
+    // ---- dock
+
+    private View dockPreview;
+    private int previewIdx = -1;
+    private final Runnable showPreview = this::showDockPreview;
+
+    /** Dots under dock icons: one per open window, up to three. */
+    void updateDots() {
+        for (int i = 0; i < sh.dockTiles.size() && i < sh.dockEntries.size(); i++) {
+            View t = sh.dockTiles.get(i);
+            MainActivity.AppEntry a = sh.dockEntries.get(i);
+            Object old = t.getTag(R_DOTS);
+            if (old instanceof android.graphics.drawable.Drawable) t.getOverlay().remove((android.graphics.drawable.Drawable) old);
+            t.setTag(R_DOTS, null);
+            int n = a == null || a.pkg == null ? 0 : Math.min(3, AppShots.windows(a.pkg));
+            if (n == 0) continue;
+            Dots d = new Dots(n, dp(4), dp(3.5f));
+            int w = t.getLayoutParams().width, h = t.getLayoutParams().height;
+            d.setBounds(0, h + dp(6), w, h + dp(10));
+            t.getOverlay().add(d);
+            t.setTag(R_DOTS, d);
+        }
+    }
+
+    private static final int R_DOTS = 0x7f0a2001;
+
+    private static final class Dots extends android.graphics.drawable.Drawable {
+        final int n;
+        final float size, gap;
+        final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        Dots(int n, float size, float gap) {
+            this.n = n;
+            this.size = size;
+            this.gap = gap;
+            p.setColor(0xF2FFFFFF);
+            p.setShadowLayer(size, 0, 0, 0x66000000);
+        }
+
+        @Override public void draw(Canvas c) {
+            Rect b = getBounds();
+            float total = n * size + (n - 1) * gap;
+            float x = b.centerX() - total / 2f + size / 2f, y = b.centerY();
+            for (int i = 0; i < n; i++) {
+                c.drawCircle(x, y, size / 2f, p);
+                x += size + gap;
+            }
+        }
+
+        @Override public void setAlpha(int a) {}
+
+        @Override public void setColorFilter(ColorFilter cf) {}
+
+        @Override public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
+
+    /** Focus resting on an open app: its window preview appears above it. */
+    private void schedulePreview(int index) {
+        hideDockPreview();
+        previewIdx = index;
+        host.handler.removeCallbacks(showPreview);
+        if (index < 0 || index >= sh.dockEntries.size()) return;
+        MainActivity.AppEntry a = sh.dockEntries.get(index);
+        if (a == null || a.pkg == null || AppShots.windows(a.pkg) == 0 || !AppShots.has(host, a.pkg)) return;
+        host.handler.postDelayed(showPreview, 650);
+    }
+
+    private void showDockPreview() {
+        int i = previewIdx;
+        if (i < 0 || i >= sh.dockTiles.size() || sh.sheetLayer != null || infoLayer != null || saverLayer != null) return;
+        View tile = sh.dockTiles.get(i);
+        if (!tile.isFocused()) return;
+        int w = dp(210);
+        View card = previewCard(sh.dockEntries.get(i), w, glass(Liquid.PANEL, dp(16)));
+        card.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int[] tl = new int[2], ol = new int[2];
+        tile.getLocationInWindow(tl);
+        sh.overlay.getLocationInWindow(ol);
+        float cx = tl[0] - ol[0] + tile.getWidth() * tile.getScaleX() / 2f;
+        int x = Math.round(Math.max(dp(20), Math.min(sh.overlay.getWidth() - w - dp(20), cx - w / 2f)));
+        int y = tl[1] - ol[1] - card.getMeasuredHeight() - dp(18);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        lp.leftMargin = x;
+        lp.topMargin = Math.max(dp(10), y);
+        sh.overlay.addView(card, lp);
+        dockPreview = card;
+        popIn(card, dp(10));
+    }
+
+    void hideDockPreview() {
+        host.handler.removeCallbacks(showPreview);
+        View v = dockPreview;
+        dockPreview = null;
+        if (v == null) return;
+        v.animate().alpha(0f).setDuration(120).withEndAction(() -> sh.overlay.removeView(v)).start();
     }
 }

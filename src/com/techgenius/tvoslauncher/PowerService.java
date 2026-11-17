@@ -1032,6 +1032,30 @@ public class PowerService extends AccessibilityService {
         }
     };
 
+    // ---------------------------------------------------------------- window previews (Liquid Glass)
+
+    private String shotPkg;
+    private final Runnable shotTick = new Runnable() {
+        @Override public void run() {
+            String p = shotPkg;
+            if (p == null || !p.equals(lastForegroundPkg) || !com.techgenius.tvoslauncher.liquid.Liquid.isOn(PowerService.this)) return;
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (pm == null || pm.isInteractive()) AppShots.capture(PowerService.this, p, null);
+            handler.postDelayed(this, 20_000);
+        }
+    };
+
+    /** While an ordinary app is in front, keep a fresh small screenshot of it for previews. */
+    private void followForShots(String pkg) {
+        if (pkg.equals(shotPkg)) return;
+        handler.removeCallbacks(shotTick);
+        shotPkg = null;
+        if (pkg.equals(getPackageName()) || Perms.isAnySystemLauncherPackage(this, pkg)
+                || !com.techgenius.tvoslauncher.liquid.Liquid.isOn(this)) return;
+        shotPkg = pkg;
+        handler.postDelayed(shotTick, 3000);  // once the app has drawn
+    }
+
     /** Package of the app in front, from window changes. */
     static volatile String lastForegroundPkg;
 
@@ -1115,7 +1139,19 @@ public class PowerService extends AccessibilityService {
                 handler.removeCallbacks(settingsLong);
                 if (!settingsLongFired) {
                     final String fg = lastForegroundPkg;
-                    handler.post(() -> LiquidHome.openControlPanelFor(this, fg));
+                    // Fresh preview of the app first (so the panel itself isn't in it), then the panel.
+                    if (fg != null && fg.equals(shotPkg)) {
+                        final boolean[] once = {false};
+                        Runnable open = () -> {
+                            if (once[0]) return;
+                            once[0] = true;
+                            LiquidHome.openControlPanelFor(this, fg);
+                        };
+                        AppShots.capture(this, fg, open);
+                        handler.postDelayed(open, 450);
+                    } else {
+                        handler.post(() -> LiquidHome.openControlPanelFor(this, fg));
+                    }
                 }
             }
             return true;
@@ -1188,7 +1224,10 @@ public class PowerService extends AccessibilityService {
                 setKeyFilteringEnabled(!isGame);
             }
             RecentAppsOverlay.recordAppUsed(this, fgPkg);
-            if (!"com.android.systemui".equals(fgPkg) && !"android".equals(fgPkg)) lastForegroundPkg = fgPkg;
+            if (!"com.android.systemui".equals(fgPkg) && !"android".equals(fgPkg)) {
+                lastForegroundPkg = fgPkg;
+                followForShots(fgPkg);
+            }
             MediaWatchService.pollActiveSessionsAsync(this);
 
             // Caffeine Mode: deny Android TV's automatic Ambient Mode / Backdrop / Dream screensaver

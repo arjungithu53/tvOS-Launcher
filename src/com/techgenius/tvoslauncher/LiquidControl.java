@@ -64,6 +64,7 @@ final class LiquidControl {
     }
 
     private void close() {
+        hidePreview();
         if (ovLayer != null) {
             removeOverlay();
         } else {
@@ -74,6 +75,7 @@ final class LiquidControl {
 
     /** Close at once (before starting something else). */
     private void closeNow() {
+        hidePreview();
         if (ovLayer != null) removeOverlay();
         else sh.closeSheetImmediate();
         cpNotifBox = null;
@@ -630,6 +632,11 @@ final class LiquidControl {
             ic.addView(iv, new FrameLayout.LayoutParams(cell, cell));
             ic.setTag(R_PKG, pkg);
             focusable(ic, dp(13), 1.12f);
+            ic.setOnFocusChangeListener((x, has) -> {
+                focusLook(x, dp(13), 1.12f, has);
+                if (has) schedulePreview(a);
+                else hidePreview();
+            });
             ic.setLongClickable(ovLayer == null);
             ic.setOnClickListener(v -> {
                 if (ovLayer != null) {
@@ -646,6 +653,7 @@ final class LiquidControl {
                 acts.add(() -> lh.showAppInfo(a, v));
                 acts.add(() -> {
                     RecentAppsOverlay.removeAndKillApp(host, pkg);
+                    AppShots.markClosed(pkg);
                     fillRecents();
                     host.handler.postDelayed(this::updateMemory, 1500);
                 });
@@ -699,6 +707,57 @@ final class LiquidControl {
         }
     }
 
+    // ---------------------------------------------------------------- window preview
+
+    private View cpPreview;
+    private MainActivity.AppEntry previewFor;
+    private final Runnable cpShow = this::showPreview;
+
+    private void schedulePreview(MainActivity.AppEntry a) {
+        hidePreview();
+        previewFor = a;
+        if (a != null && AppShots.has(host, a.pkg)) host.handler.postDelayed(cpShow, 500);
+    }
+
+    /** Shown just below Recent apps, over the tiles, which stay where they are. */
+    private void showPreview() {
+        FrameLayout root = layerRoot;
+        MainActivity.AppEntry a = previewFor;
+        if (root == null || a == null || recentRow == null || !recentRow.isAttachedToWindow()) return;
+        int[] rl = new int[2], ol = new int[2];
+        recentRow.getLocationInWindow(rl);
+        root.getLocationInWindow(ol);
+        int w = recentRow.getWidth();
+        android.graphics.drawable.Drawable bg;
+        if (ovLayer != null) {
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xF21E2840, 0xF20E1424});
+            g.setCornerRadius(dp(16));
+            g.setStroke(Math.max(1, dp(0.8f)), 0x66FFFFFF);
+            bg = g;
+        } else {
+            Liquid.Look l = Liquid.look(host, Liquid.PANEL);
+            l.trans = Math.min(l.trans, 35);  // solid enough to read over the tiles
+            bg = new GlassPanel(sh.liquidSource, l, dp(16), host.screenW, host.screenH, host.unit);
+        }
+        View card = lh.previewCard(a, w, bg);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        lp.leftMargin = rl[0] - ol[0];
+        lp.topMargin = rl[1] - ol[1] + recentRow.getHeight() + dp(8);
+        root.addView(card, lp);
+        cpPreview = card;
+        LiquidHome.popIn(card, -dp(8));
+    }
+
+    private void hidePreview() {
+        host.handler.removeCallbacks(cpShow);
+        View v = cpPreview;
+        cpPreview = null;
+        if (v == null) return;
+        v.animate().alpha(0f).setDuration(110).withEndAction(() -> {
+            if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+        }).start();
+    }
+
     /** Closes every app that isn't pinned, then shows how much memory that freed. */
     private void clearRecents() {
         List<String> pkgs;
@@ -712,6 +771,7 @@ final class LiquidControl {
         for (String p : pkgs) {
             if (RecentAppsOverlay.isPinned(host, p)) continue;
             RecentAppsOverlay.removeAndKillApp(host, p);
+            AppShots.markClosed(p);
             n++;
         }
         fillRecents();
