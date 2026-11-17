@@ -249,7 +249,8 @@ final class LiquidHome {
         timeText.setShadowLayer(dp(10), 0, dp(2), 0x66000000);
         timeText.setIncludeFontPadding(false);
         timeText.setSingleLine(true);
-        col.addView(dateText);
+        col.setClipChildren(false);
+        col.addView(dateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         tl.topMargin = dp(2);
         col.addView(timeText, tl);
@@ -271,12 +272,28 @@ final class LiquidHome {
         updateClock();
     }
 
+    private static void fitToText(TextView t) {
+        CharSequence s = t.getText();
+        int w = (int) Math.ceil(t.getPaint().measureText(s, 0, s.length()))
+                + t.getCompoundPaddingLeft() + t.getCompoundPaddingRight() + 2;
+        // The shadow spreads past the glyphs; leave room for it.
+        w += (int) Math.ceil(t.getShadowRadius() + Math.abs(t.getShadowDx()));
+        if (t.getMinWidth() != w) {
+            t.setMinWidth(w);
+            t.setMinimumWidth(w);
+            t.requestLayout();
+        }
+    }
+
     private void updateClock() {
         if (timeText == null) return;
         Date now = new Date();
         timeText.setText(new SimpleDateFormat("HH:mm", Locale.ENGLISH).format(now));
         // Short so it never gets cut: WED  ·  18/11
         dateText.setText(new SimpleDateFormat("EEE  ·  dd/MM", Locale.ENGLISH).format(now).toUpperCase(Locale.ENGLISH));
+        // Each line is as wide as its own text (never the other line's width, never a stale one).
+        fitToText(dateText);
+        fitToText(timeText);
     }
 
     // ================================================================== widgets
