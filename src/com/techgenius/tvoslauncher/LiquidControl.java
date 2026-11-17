@@ -247,9 +247,28 @@ final class LiquidControl {
     }
 
     private void focusLook(View x, float r, float scale, boolean has) {
-        x.setForeground(has ? lh.ring(r) : null);
+        if (x instanceof TextView) {
+            // TextView chips don't show a foreground ring here, so the ring goes into the background
+            android.graphics.drawable.Drawable bg = x.getBackground();
+            if (has) {
+                if (!(bg instanceof FocusLayer)) x.setBackground(new FocusLayer(bg, lh.ring(r)));
+            } else if (bg instanceof FocusLayer) {
+                x.setBackground(((FocusLayer) bg).base);
+            }
+        } else {
+            x.setForeground(has ? lh.ring(r) : null);
+        }
         x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f).setDuration(200).setInterpolator(MainActivity.LIFT).start();
         if (has) keepVisible(x);
+    }
+
+    private static final class FocusLayer extends android.graphics.drawable.LayerDrawable {
+        final android.graphics.drawable.Drawable base;
+        FocusLayer(android.graphics.drawable.Drawable base, android.graphics.drawable.Drawable ring) {
+            super(base == null ? new android.graphics.drawable.Drawable[]{ring}
+                               : new android.graphics.drawable.Drawable[]{base, ring});
+            this.base = base;
+        }
     }
 
     private TextView chip(String label, Runnable r) {
@@ -807,18 +826,31 @@ final class LiquidControl {
             pill("Nothing to close · pinned apps stay open");
             return;
         }
-        host.handler.postDelayed(() -> {
-            long freed = Math.max(0, memory()[1] - before);
-            updateMemory();
-            String what = "Closed " + closed + (closed == 1 ? " app" : " apps");
-            pill(freed >= 5L * 1048576L ? what + String.format(Locale.ENGLISH, " · about %d MB freed", Math.round(freed / 1048576.0)) : what);
-        }, 1600);
+        final String what = "Closed " + closed + (closed == 1 ? " app" : " apps");
+        final TextView p = pill("Closing " + closed + (closed == 1 ? " app…" : " apps…"), 9000);
+        // Force-stops land over a few seconds, so watch free memory and keep the best reading.
+        final long[] best = {0};
+        for (int i = 1; i <= 8; i++) {
+            final boolean last = i == 8;
+            host.handler.postDelayed(() -> {
+                best[0] = Math.max(best[0], memory()[1] - before);
+                updateMemory();
+                if (p == null) return;
+                long mb = Math.round(best[0] / 1048576.0);
+                if (mb >= 5) p.setText(String.format(Locale.ENGLISH, "%s · %d MB freed", what, mb));
+                else if (last) p.setText(what);
+            }, i * 900L);
+        }
     }
 
     /** A glass pill message to the left of the panel, as in the design. */
-    private void pill(String msg) {
+    private TextView pill(String msg) {
+        return pill(msg, 3200);
+    }
+
+    private TextView pill(String msg, long showMs) {
         FrameLayout root = layerRoot;
-        if (root == null) return;
+        if (root == null) return null;
         TextView t = text(11f, "medium", Color.WHITE);
         t.setText(msg);
         t.setPadding(dp(18), dp(10), dp(18), dp(10));
@@ -836,7 +868,8 @@ final class LiquidControl {
         t.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(MainActivity.LIFT).start();
         host.handler.postDelayed(() -> t.animate().alpha(0f).setDuration(300).withEndAction(() -> {
             if (t.getParent() instanceof ViewGroup) ((ViewGroup) t.getParent()).removeView(t);
-        }).start(), 3200);
+        }).start(), showMs);
+        return t;
     }
 
     // ---------------------------------------------------------------- wallpaper

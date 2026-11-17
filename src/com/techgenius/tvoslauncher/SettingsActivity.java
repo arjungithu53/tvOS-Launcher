@@ -1011,6 +1011,12 @@ public class SettingsActivity extends Activity {
                 LiquidHome.pendingLookAndFeel = true;
                 finish();
             });
+            row("Wallpaper", () -> com.techgenius.tvoslauncher.liquid.Liquid.isApod(this)
+                    ? "Astronomy Picture of the Day" : "Night Scenes", () -> {
+                boolean apod = com.techgenius.tvoslauncher.liquid.Liquid.isApod(this);
+                com.techgenius.tvoslauncher.liquid.Liquid.putString(this, "wallpaper", apod ? "scenes" : "apod");
+                CustomMedia.resetOnlineDeck(CustomMedia.SCOPE_SCENE);
+            });
         }
 
         section(tr("HOME SCREEN WIDGETS", "ANA EKRAN WIDGET'LARI"));

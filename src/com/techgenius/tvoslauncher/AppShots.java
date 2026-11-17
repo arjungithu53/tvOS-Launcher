@@ -157,7 +157,19 @@ final class AppShots {
         return n == null ? 0 : n;
     }
 
-    private static final Pattern TASK = Pattern.compile("A=\\d+:([\\w.]+)");
+    // A task names its app by realActivity (best), I= intent, or A= affinity. Some apps (YouTube) use
+    // an affinity that isn't their package name, so the affinity is only the last resort.
+    private static final Pattern REAL = Pattern.compile("realActivity=\\{?([\\w.]+)/");
+    private static final Pattern INTENT = Pattern.compile(" I=\\{?([\\w.]+)/");
+    private static final Pattern AFFINITY = Pattern.compile("A=\\d+:([\\w.]+)");
+
+    private static String taskPkg(String block) {
+        for (Pattern p : new Pattern[]{REAL, INTENT, AFFINITY}) {
+            Matcher m = p.matcher(block);
+            if (m.find()) return m.group(1);
+        }
+        return null;
+    }
 
     /** Reads Android's task list (tasks whose app is still running). done runs on the main thread. */
     static void refreshOpen(Context c, Runnable done) {
@@ -167,7 +179,7 @@ final class AppShots {
             boolean ok = false;
             try {
                 String out = LocalAdb.execShellOutput(app,
-                        "dumpsys activity recents | grep 'Recent #'; echo ===; ps -A -o NAME");
+                        "dumpsys activity recents | grep -E 'Recent #|realActivity='; echo ===; ps -A -o NAME");
                 if (out != null && out.contains("===")) {
                     String[] parts = out.split("===", 2);
                     java.util.Set<String> running = new java.util.HashSet<>();
@@ -177,11 +189,11 @@ final class AppShots {
                         if (colon > 0) n = n.substring(0, colon);
                         if (!n.isEmpty()) running.add(n);
                     }
-                    Matcher m = TASK.matcher(parts[0]);
                     String own = app.getPackageName();
-                    while (m.find()) {
-                        String pkg = m.group(1);
-                        if (pkg.equals(own) || !running.contains(pkg) || Perms.isAnySystemLauncherPackage(app, pkg)) continue;
+                    String[] blocks = parts[0].split("Recent #");
+                    for (int b = 1; b < blocks.length; b++) {
+                        String pkg = taskPkg(blocks[b]);
+                        if (pkg == null || pkg.equals(own) || !running.contains(pkg) || Perms.isAnySystemLauncherPackage(app, pkg)) continue;
                         Integer n = next.get(pkg);
                         next.put(pkg, n == null ? 1 : n + 1);
                     }
