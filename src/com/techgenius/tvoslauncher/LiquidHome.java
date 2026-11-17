@@ -404,7 +404,8 @@ final class LiquidHome {
     private void focusCard(View v, GlassPanel g, boolean has) {
         g.setLit(has);
         v.setForeground(has ? ring(dp(20)) : null);
-        v.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f).setDuration(200).setInterpolator(MainActivity.LIFT).start();
+        v.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f)
+                .setDuration(has ? 420 : 200).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
     }
 
     void refreshWeather() {
@@ -639,6 +640,9 @@ final class LiquidHome {
         ensureWindow(sh.focusedDockIdx);
         row.setClipChildren(false);
         if (row.getParent() instanceof ViewGroup) ((ViewGroup) row.getParent()).setClipChildren(false);
+        lens = new Lens();
+        if (row.getBackground() == null) row.setBackground(lens);
+        else lens = null;  // the row already paints something: leave it
         updateDots();
     }
 
@@ -712,15 +716,15 @@ final class LiquidHome {
             boolean focused = d == 0;
             t.animate().scaleX(c[1]).scaleY(c[1]).translationY(-c[0] * k)
                     .rotationX(focused && tilt ? 5f : 0f).rotationY(focused && tilt ? -6f : 0f)
-                    .setDuration(300).setInterpolator(MainActivity.LIFT).start();
+                    .setDuration(420).setInterpolator(MainActivity.SPRING).start();
             t.setForeground(focused ? new Shine(tilt, "tile".equals(Liquid.iconStyle(host))) : null);
             t.setZ(focused ? dp(4) : 0);
         }
         if (marginAnim != null) marginAnim.cancel();
         final float base = gap(size) / 2f;
         marginAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
-        marginAnim.setDuration(300);
-        marginAnim.setInterpolator(MainActivity.LIFT);
+        marginAnim.setDuration(420);
+        marginAnim.setInterpolator(MainActivity.SPRING);
         marginAnim.addUpdateListener(a -> {
             float p = (float) a.getAnimatedValue();
             for (int i = 0; i < sh.dockTiles.size() && i < from.length; i++) {
@@ -738,6 +742,99 @@ final class LiquidHome {
         });
         if (curMargins.length != to.length) curMargins = new float[to.length];
         marginAnim.start();
+        if (lens != null) lens.glideTo(f >= 0 && f < sh.dockTiles.size() ? sh.dockTiles.get(f) : null);
+    }
+
+    private Lens lens;
+
+    /**
+     * The gliding lens: one soft glass glow behind the dock icons that slides to the focused icon
+     * on a spring, growing with it. Drawn as the dock row's background (no bitmaps, no layers).
+     */
+    private final class Lens extends Drawable {
+        final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final android.graphics.Matrix m = new android.graphics.Matrix();
+        final android.graphics.RadialGradient unit = new android.graphics.RadialGradient(0, 0, 1f,
+                new int[]{0x40FFFFFF, 0x1FFFFFFF, 0x00FFFFFF}, new float[]{0f, 0.62f, 1f}, Shader.TileMode.CLAMP);
+        final RectF box = new RectF();
+        float cx, cy, w, alpha;
+        float fromX, fromY, fromW, fromA;
+        View target;
+        android.animation.ValueAnimator anim;
+
+        Lens() {
+            glow.setShader(unit);
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(Math.max(1f, dp(0.8f)));
+        }
+
+        void glideTo(View t) {
+            target = t;
+            if (anim != null) anim.cancel();
+            fromX = cx;
+            fromY = cy;
+            fromW = w;
+            fromA = alpha;
+            if (fromA <= 0.01f && t != null) {
+                // Appearing: start where the icon is, just fade in.
+                fromX = tx(t);
+                fromY = ty(t);
+                fromW = tw(t);
+            }
+            anim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+            anim.setDuration(460);
+            anim.setInterpolator(MainActivity.SPRING);
+            anim.addUpdateListener(a -> {
+                float p = (float) a.getAnimatedValue();
+                float q = Math.min(1f, a.getAnimatedFraction() * 2.5f);
+                if (target != null) {
+                    // Follow the icon live: the dock's margins and scales are animating too.
+                    cx = fromX + (tx(target) - fromX) * p;
+                    cy = fromY + (ty(target) - fromY) * p;
+                    w = fromW + (tw(target) - fromW) * p;
+                    alpha = fromA + (1f - fromA) * q;
+                } else {
+                    alpha = fromA * (1f - q);
+                }
+                invalidateSelf();
+            });
+            anim.start();
+        }
+
+        private float tx(View t) {
+            return t.getLeft() + t.getWidth() / 2f + t.getTranslationX();
+        }
+
+        private float ty(View t) {
+            // Tiles scale from their bottom edge and lift by translationY.
+            return t.getTop() + t.getHeight() * (1f - t.getScaleY() / 2f) + t.getTranslationY();
+        }
+
+        private float tw(View t) {
+            return t.getWidth() * t.getScaleX();
+        }
+
+        @Override public void draw(Canvas c) {
+            if (alpha <= 0.01f || w <= 0) return;
+            float r = w * 0.86f;
+            m.setScale(r, r);
+            m.postTranslate(cx, cy);
+            unit.setLocalMatrix(m);
+            glow.setAlpha(Math.round(255 * alpha));
+            c.drawCircle(cx, cy, r, glow);
+            float h = w * 0.62f;
+            box.set(cx - h, cy - h, cx + h, cy + h);
+            rim.setColor(Color.argb(Math.round(70 * alpha), 255, 255, 255));
+            c.drawRoundRect(box, h * 0.5f, h * 0.5f, rim);
+        }
+
+        @Override public void setAlpha(int a) {}
+
+        @Override public void setColorFilter(ColorFilter cf) {}
+
+        @Override public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     /** Focused icon: a thin white ring and a diagonal shine across the glass. */

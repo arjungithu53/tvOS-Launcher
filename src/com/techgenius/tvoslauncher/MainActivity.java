@@ -103,6 +103,9 @@ public class MainActivity extends Activity {
     /** Focus lift with a slight spring, like tvOS. */
     static final android.view.animation.OvershootInterpolator LIFT =
             new android.view.animation.OvershootInterpolator(1.3f);
+    /** Liquid Glass focus: a damped spring (overshoots ~4%, rings once, settles). Pair with ~420 ms. */
+    static final android.animation.TimeInterpolator SPRING =
+            t -> t >= 1f ? 1f : (float) (1 - Math.exp(-5.5 * t) * Math.cos(9.5 * t));
 
     /** Starts this launcher as the Home activity (an explicit start can open a second copy). */
     public static Intent homeIntent(Context c) {

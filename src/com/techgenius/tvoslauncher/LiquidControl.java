@@ -68,8 +68,14 @@ final class LiquidControl {
         if (ovLayer != null) {
             removeOverlay();
         } else {
+            if (morphFrom != null && scroll != null) {
+                // Shrink back into the button while the layer fades.
+                scroll.animate().cancel();
+                scroll.animate().scaleX(0.3f).scaleY(0.3f).setDuration(170).setInterpolator(MainActivity.EASE).start();
+            }
             sh.closeSheet();
         }
+        morphFrom = null;
         cpNotifBox = null;
     }
 
@@ -203,14 +209,44 @@ final class LiquidControl {
             host.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
         layer.setAlpha(0f);
-        sv.setTranslationX(right ? dp(40) : -dp(40));
         layer.animate().alpha(1f).setDuration(180).start();
-        sv.animate().translationX(0).setDuration(280).setInterpolator(MainActivity.LIFT).start();
+        morphFrom = !over && returnTo != null && returnTo.isAttachedToWindow() ? returnTo : null;
+        if (morphFrom != null) {
+            // Morph: the panel grows out of the button that opened it, on a spring.
+            sv.setScaleX(0.14f);
+            sv.setScaleY(0.14f);
+            sv.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    sv.getViewTreeObserver().removeOnPreDrawListener(this);
+                    aimPivot(sv);
+                    sv.animate().scaleX(1f).scaleY(1f).setDuration(480).setInterpolator(MainActivity.SPRING).start();
+                    return true;
+                }
+            });
+        } else {
+            sv.setTranslationX(right ? dp(40) : -dp(40));
+            sv.animate().translationX(0).setDuration(280).setInterpolator(MainActivity.LIFT).start();
+        }
         scroll = sv;
         return col;
     }
 
     private ScrollView scroll;
+    /** The button the open panel grew from (and shrinks back into). */
+    private View morphFrom;
+
+    /** Sets the panel's pivot to the centre of the button it opens from. */
+    private void aimPivot(View panel) {
+        if (morphFrom == null) return;
+        int[] a = new int[2], b = new int[2];
+        morphFrom.getLocationInWindow(a);
+        panel.getLocationInWindow(b);
+        // getLocationInWindow includes the current scale; undo it around the default (centre) pivot.
+        float sx = panel.getScaleX(), sy = panel.getScaleY();
+        float bx = b[0] - (panel.getPivotX() * (1 - sx)), by = b[1] - (panel.getPivotY() * (1 - sy));
+        panel.setPivotX(a[0] + morphFrom.getWidth() / 2f - bx);
+        panel.setPivotY(a[1] + morphFrom.getHeight() / 2f - by);
+    }
 
     private void keepVisible(View v) {
         if (scroll == null) return;
@@ -258,7 +294,8 @@ final class LiquidControl {
         } else {
             x.setForeground(has ? lh.ring(r) : null);
         }
-        x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f).setDuration(200).setInterpolator(MainActivity.LIFT).start();
+        x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f)
+                .setDuration(has ? 420 : 200).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
         if (has) keepVisible(x);
     }
 
@@ -1272,7 +1309,8 @@ final class LiquidControl {
             t.setClickable(true);
             t.setOnFocusChangeListener((x, has) -> {
                 x.setForeground(has ? lh.ring(dp(14)) : null);
-                x.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
+                x.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
+                        .setDuration(has ? 420 : 180).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
                 if (has) keepVisible(x);
             });
             final String id = it[0];

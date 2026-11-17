@@ -1457,8 +1457,8 @@ public final class HomeDashboard {
                         .scaleY(hasFocus ? 1.035f : 1.0f)
                         .translationY(hasFocus ? -dp(host, 2) : 0f)
                         .translationZ(hasFocus ? dp(host, 8) : 0f)
-                        .setDuration(150)
-                        .setInterpolator(MainActivity.EASE)
+                        .setDuration(liquidGlass != null && hasFocus ? 420 : 150)
+                        .setInterpolator(liquidGlass != null && hasFocus ? MainActivity.SPRING : MainActivity.EASE)
                         .start();
                 v.invalidate();
             }
