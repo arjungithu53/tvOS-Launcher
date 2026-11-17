@@ -239,6 +239,7 @@ final class LiquidHome {
         dateText.setTypeface(Ui.font(host, "regular".equals(w) ? "medium" : w));
         dateText.setLetterSpacing(0.14f);
         dateText.setSingleLine(true);
+        dateText.setEllipsize(null);
         dateText.setTextColor(0xE6FFFFFF);
         dateText.setShadowLayer(dp(8), 0, dp(1), 0x80000000);
         timeText = new TextView(host);
@@ -274,7 +275,8 @@ final class LiquidHome {
         if (timeText == null) return;
         Date now = new Date();
         timeText.setText(new SimpleDateFormat("HH:mm", Locale.ENGLISH).format(now));
-        dateText.setText(new SimpleDateFormat("EEEE  ·  d MMMM", Locale.ENGLISH).format(now).toUpperCase(Locale.ENGLISH));
+        // Short so it never gets cut: WED  ·  18/11
+        dateText.setText(new SimpleDateFormat("EEE  ·  dd/MM", Locale.ENGLISH).format(now).toUpperCase(Locale.ENGLISH));
     }
 
     // ================================================================== widgets
@@ -948,6 +950,26 @@ final class LiquidHome {
         View f = host.getCurrentFocus();
         boolean inDock = sh.dockTiles.contains(f);
         boolean topBtn = f == sh.weatherBtn || f == sh.moonBtn || (styleBtn != null && f == styleBtn);
+        if (styleBtn != null && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            // Top buttons, left to right: Look & feel, Search, Control Panel.
+            if (f == sh.weatherBtn && k == KeyEvent.KEYCODE_DPAD_LEFT) {
+                if (down) styleBtn.requestFocus();
+                return true;
+            }
+            if (f == styleBtn) {
+                if (down && k == KeyEvent.KEYCODE_DPAD_RIGHT) sh.weatherBtn.requestFocus();
+                return true;
+            }
+        }
+        if (f == styleBtn && k == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (down) {
+                if (visible(weatherCard)) weatherCard.requestFocus();
+                else if (dashShowing()) focusDash();
+                else sh.focusDock(sh.focusedDockIdx);
+            }
+            return true;
+        }
+        if (f == styleBtn && k == KeyEvent.KEYCODE_DPAD_UP) return true;
         int dashIdx = sh.dashboardCards.indexOf(f);
         if (dashIdx >= 0) {
             lastDashIdx = dashIdx;

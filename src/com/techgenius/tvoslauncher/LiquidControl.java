@@ -464,7 +464,7 @@ final class LiquidControl {
         final int[] bl = {-1};
         final long[] blSent = {0};
         final Runnable[] blRefresh = {null};
-        blRefresh[0] = slider(sl, "Backlight", "ambient", () -> Math.max(0, bl[0]), v -> {
+        blRefresh[0] = slider(sl, "Brightness", "ambient", () -> Math.max(0, bl[0]), v -> {
             if (bl[0] < 0) {
                 closeNow();
                 Backlight.openBacklight(host);
@@ -611,8 +611,8 @@ final class LiquidControl {
         TextView val = text(9f, "regular", Color.WHITE);
         val.setGravity(Gravity.END);
         r.addView(val, new LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT));
+        // The bar sits in the exact middle of its box; the caption stays at the top.
         FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL);
-        rlp.topMargin = dp(8);
         box.addView(r, rlp);
         Runnable refresh = () -> {
             int v = Math.max(0, Math.min(100, get.getAsInt()));
@@ -637,7 +637,7 @@ final class LiquidControl {
             }
             return true;
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
         if (parent.getChildCount() > 0) lp.topMargin = dp(6);
         parent.addView(box, lp);
         return refresh;

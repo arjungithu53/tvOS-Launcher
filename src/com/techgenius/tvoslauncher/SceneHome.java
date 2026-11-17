@@ -2879,9 +2879,11 @@ final class SceneHome {
                 I18n.s(host, "Language, weather, scenes, apps and people",
                         "Dil, hava durumu, sahneler, uygulamalar ve kişiler"),
                 () -> {
-                    closeSheetImmediate();
+                    // Open first and close the menu behind it: closing first sent focus to the
+                    // top-left button for a moment.
                     host.returningFromSettings = true;
                     host.startActivity(new Intent(host, SettingsActivity.class));
+                    overlay.postDelayed(this::closeSheetImmediate, 400);
                 });
         card.addView(btnHomeSettings);
         rows.add(btnHomeSettings);
@@ -2892,8 +2894,8 @@ final class SceneHome {
                 I18n.s(host, "Wi-Fi, picture, sound and the rest of the TV",
                         "Wi-Fi, görüntü, ses ve diğer TV ayarları"),
                 () -> {
-                    closeSheetImmediate();
                     host.startSafe(new Intent(Settings.ACTION_SETTINGS));
+                    overlay.postDelayed(this::closeSheetImmediate, 400);
                 });
         LinearLayout.LayoutParams tvlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
