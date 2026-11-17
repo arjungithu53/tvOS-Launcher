@@ -264,6 +264,11 @@ public class MainActivity extends Activity {
         focusedIndex = Math.max(0, prefs.getInt("last_classic_idx", 0));
         activeLang = I18n.getLang(this);
         com.techgenius.tvoslauncher.liquid.Liquid.ensureDefault(this);
+        // Continue Watching is removed: clear its saved history once.
+        if (!getSharedPreferences("liquid", MODE_PRIVATE).getBoolean("cw_removed", false)) {
+            getSharedPreferences("liquid", MODE_PRIVATE).edit().putBoolean("cw_removed", true).apply();
+            io.execute(() -> MediaWatchService.Store.clear(this));
+        }
         activeLook = Scenes.getLook(this);
         activeLiquid = com.techgenius.tvoslauncher.liquid.Liquid.isOn(this);
         activeLiquidStamp = com.techgenius.tvoslauncher.liquid.Liquid.stamp(this);
@@ -582,9 +587,9 @@ public class MainActivity extends Activity {
                     wallView.setImageDrawable(null);
                     if (wb != null && !wb.isRecycled()) wb.recycle();
                 }
-                // Home is out of sight (an app is in front): drop the full-size scene photos and
-                // their glass copies too. onResume loads the current scene again.
-                if (sceneHome != null && !resumed) sceneHome.sceneView.releaseCache();
+                // Home is out of sight (an app is in front): drop every scene photo except the one
+                // on screen, so Home still comes back instantly.
+                if (sceneHome != null && !resumed) sceneHome.sceneView.releaseAllButCurrent();
             } else if (sceneHome != null) {
                 sceneHome.sceneView.releaseCache();
             }
@@ -2150,8 +2155,9 @@ public class MainActivity extends Activity {
     }
 
     /** Continue Watching can be switched off per profile (Settings -> Continue Watching); off by default. */
+    /** Continue Watching is removed from this build. */
     boolean cwEnabled() {
-        return Profiles.homePrefs(this).getBoolean("cw_enabled", false);
+        return false;
     }
 
     /** The tab bar only appears when there are two things to switch between. */

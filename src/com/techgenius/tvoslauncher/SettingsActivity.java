@@ -1205,24 +1205,12 @@ public class SettingsActivity extends Activity {
                             .apply();
                     showStatusMsg(tr("App layout reset to default.", "Uygulama düzeni varsayılana sıfırlandı."));
                 });
-        row(tr("Show Continue Watching on Home", "Ana ekranda İzlemeye Devam Et'i göster"),
-                () -> Profiles.homePrefs(this).getBoolean("cw_enabled", false) ? tr("On", "Açık") : tr("Off", "Kapalı"),
-                () -> {
-                    boolean on = !Profiles.homePrefs(this).getBoolean("cw_enabled", false);
-                    Profiles.homePrefs(this).edit().putBoolean("cw_enabled", on).apply();
-                });
         row(tr("Home screen weather shortcut", "Ana ekranda hava durumu kısayolu"),
                 () -> SceneHome.isWeatherShortcutEnabled(this) ? tr("On", "Açık") : tr("Off", "Kapalı"),
                 () -> {
                     boolean next = !SceneHome.isWeatherShortcutEnabled(this);
                     SceneHome.setWeatherShortcutEnabled(this, next);
                     refreshAll();
-                });
-        row(tr("Clear Continue Watching history", "İzlemeye Devam Et geçmişini temizle"),
-                () -> "",
-                () -> {
-                    MediaWatchService.Store.clear(this);
-                    showStatusMsg(tr("Continue Watching cleared.", "İzlemeye Devam Et geçmişi temizlendi."));
                 });
         row(tr("Manage system apps in TV settings…", "TV ayarlarında uygulamaları yönet…"),
                 () -> chev(),
@@ -1231,7 +1219,8 @@ public class SettingsActivity extends Activity {
                 "İpucu: Ana ekran dock'undaki herhangi bir uygulamayı taşımak veya gizlemek için OK tuşuna basılı tutun."));
 
         // One section per streaming app with a continue-watching popup on its dock tile.
-        for (WatchCloud cloud : new WatchCloud[]{new NuvioCloud(this), new StremioCloud(this)}) {
+        // Continue Watching is removed: no Nuvio / Stremio sections.
+        for (WatchCloud cloud : new WatchCloud[0]) {
             section(cloud.name().toUpperCase(java.util.Locale.ROOT));
             row(tr("Continue Watching on dock", "Dock'ta İzlemeye Devam Et"),
                     () -> cloud.popupEnabled() ? tr("On", "Açık") : tr("Off", "Kapalı"),

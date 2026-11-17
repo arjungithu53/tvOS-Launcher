@@ -159,8 +159,7 @@ final class SceneHome {
         buildBottomDock();
         nuvioCloud = new NuvioCloud(host);
         stremioCloud = new StremioCloud(host);
-        watchPopups.add(new WatchPopup(this, nuvioCloud));
-        watchPopups.add(new WatchPopup(this, stremioCloud));
+        // Continue Watching (Nuvio / Stremio pop-ups) is removed from this build: none are created.
         if (Liquid.isOn(host)) liquid = new LiquidHome(this);
     }
 

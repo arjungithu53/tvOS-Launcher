@@ -1198,6 +1198,24 @@ public final class Scenes {
             }
         }
 
+        /**
+         * Home hidden: keep only the scene on screen (so Home comes back instantly) and drop the
+         * other scenes and the full-screen frame copy.
+         */
+        public void releaseAllButCurrent() {
+            stop();
+            java.util.Iterator<Map.Entry<String, LoadedScene>> it = cache.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<String, LoadedScene> e = it.next();
+                if (e.getKey().equals(currentId)) continue;
+                if (e.getValue() != null) e.getValue().recycle();
+                it.remove();
+            }
+            if (cachedFrameBmp != null && !cachedFrameBmp.isRecycled()) cachedFrameBmp.recycle();
+            cachedFrameBmp = null;
+            cachedFrameKey = null;
+        }
+
         public void releaseCache() {
             stop();
             for (LoadedScene ls : cache.values()) {
