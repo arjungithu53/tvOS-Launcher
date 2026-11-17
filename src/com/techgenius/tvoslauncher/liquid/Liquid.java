@@ -51,6 +51,16 @@ public final class Liquid {
         }
     }
 
+    /** One-time changes to defaults for people already using Liquid Glass. */
+    public static void migrate(Context c) {
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean("dock_shelf_v1", false)) {
+            // The dock sits on a glass shelf now (as on macOS), in Basic and Advanced.
+            p.edit().putBoolean("dock_shelf_v1", true).putInt("basic_dock", 100).putInt("adv_dock_bg", 100)
+                    .putInt("stamp", p.getInt("stamp", 0) + 1).apply();
+        }
+    }
+
     /** Another layout was chosen directly (Night Scenes or Classic): Liquid Glass just turns off. */
     public static void leave(Context c) {
         prefs(c).edit().putBoolean(K_ON, false).apply();
@@ -99,9 +109,8 @@ public final class Liquid {
         String pp = isAdvanced(c) ? partPreset(c, part) : null;
         int[] pv = preset(pp != null ? pp : preset(c));
         String pre = isAdvanced(c) ? "adv_" + part + "_" : "basic_";
-        int defBg = DOCK.equals(part) ? 0 : 100;
-        int bg = isAdvanced(c) ? p.getInt(pre + "bg", defBg)
-                : DOCK.equals(part) ? p.getInt("basic_dock", 0) : 100;
+        int bg = isAdvanced(c) ? p.getInt(pre + "bg", 100)
+                : DOCK.equals(part) ? p.getInt("basic_dock", 100) : 100;
         return new Look(p.getInt(pre + "trans", pv[0]), p.getInt(pre + "blur", pv[1]),
                 p.getInt(pre + "refr", pv[2]), p.getInt(pre + "tint", pv[3]), p.getInt(pre + "rim", pv[4]), bg);
     }
@@ -203,7 +212,7 @@ public final class Liquid {
             for (int i = 0; i < names.length; i++) {
                 if (names[i].equals(what)) return prefs(c).getInt("basic_" + what, pv[i]);
             }
-            if ("dock".equals(what)) return prefs(c).getInt("basic_dock", 0);
+            if ("dock".equals(what)) return prefs(c).getInt("basic_dock", 100);
             return 0;
         }
         String pp = partPreset(c, part);

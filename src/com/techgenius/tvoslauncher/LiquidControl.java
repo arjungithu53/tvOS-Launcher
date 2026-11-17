@@ -283,8 +283,15 @@ final class LiquidControl {
     }
 
     private void focusLook(View x, float r, float scale, boolean has) {
+        ring(x, r, has);
+        x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f)
+                .setDuration(has ? 420 : 200).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
+        if (has) keepVisible(x);
+    }
+
+    /** The white focus ring. TextViews don't show a foreground here, so theirs goes into the background. */
+    private void ring(View x, float r, boolean has) {
         if (x instanceof TextView) {
-            // TextView chips don't show a foreground ring here, so the ring goes into the background
             android.graphics.drawable.Drawable bg = x.getBackground();
             if (has) {
                 if (!(bg instanceof FocusLayer)) x.setBackground(new FocusLayer(bg, lh.ring(r)));
@@ -294,9 +301,6 @@ final class LiquidControl {
         } else {
             x.setForeground(has ? lh.ring(r) : null);
         }
-        x.animate().scaleX(has ? scale : 1f).scaleY(has ? scale : 1f)
-                .setDuration(has ? 420 : 200).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
-        if (has) keepVisible(x);
     }
 
     private static final class FocusLayer extends android.graphics.drawable.LayerDrawable {
@@ -763,7 +767,7 @@ final class LiquidControl {
             pin.setFocusable(true);
             pin.setClickable(true);
             pin.setOnFocusChangeListener((x, has) -> {
-                x.setForeground(has ? lh.ring(pinS / 2f) : null);
+                ring(x, pinS / 2f, has);
                 x.animate().scaleX(has ? 1.25f : 1f).scaleY(has ? 1.25f : 1f).setDuration(180).setInterpolator(MainActivity.LIFT).start();
                 if (has) keepVisible(slot);
             });
@@ -1016,7 +1020,7 @@ final class LiquidControl {
     private LinearLayout lfList;
     private TextView memLabel;
     /** Part being adjusted in Advanced mode. */
-    private String lfPart = Liquid.DOCK;
+    private String lfPart = "icons";
 
     /** Glass settings over Home (opened from Settings): every change shows behind it right away. */
     void showLookAndFeel(View returnTo) {
@@ -1122,8 +1126,8 @@ final class LiquidControl {
             magnification();
         } else {
             header("Part to adjust");
-            add(chips(new String[][]{{Liquid.DOCK, "Dock"}, {"icons", "App icons"}, {Liquid.WIDGETS, "Widgets"},
-                    {Liquid.PANEL, "Control Panel"}, {Liquid.BUTTONS, "Top buttons"}}, lfPart, "part:", id -> {
+            add(chips(new String[][]{{"icons", "App icons"}, {Liquid.WIDGETS, "Widgets"},
+                    {Liquid.PANEL, "Control Panel"}, {Liquid.BUTTONS, "Top buttons"}, {Liquid.DOCK, "Dock"}}, lfPart, "part:", id -> {
                 lfPart = id;
                 refill();
             }));
@@ -1314,7 +1318,7 @@ final class LiquidControl {
             t.setFocusable(true);
             t.setClickable(true);
             t.setOnFocusChangeListener((x, has) -> {
-                x.setForeground(has ? lh.ring(dp(14)) : null);
+                ring(x, dp(14), has);
                 x.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
                         .setDuration(has ? 420 : 180).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
                 if (has) keepVisible(x);
@@ -1432,7 +1436,7 @@ final class LiquidControl {
         r.setFocusable(true);
         r.setOnFocusChangeListener((x, has) -> {
             bg.setColor(has ? 0x33FFFFFF : 0);
-            x.setForeground(has ? lh.ring(dp(12)) : null);
+            ring(x, dp(12), has);
             bar.lit = has;
             bv.invalidate();
             if (has) keepVisible(x);
@@ -1486,7 +1490,7 @@ final class LiquidControl {
         r.setClickable(true);
         r.setOnFocusChangeListener((x, has) -> {
             bg.setColor(has ? 0x33FFFFFF : 0);
-            x.setForeground(has ? lh.ring(dp(12)) : null);
+            ring(x, dp(12), has);
             if (has) keepVisible(x);
         });
         r.setOnClickListener(x -> {

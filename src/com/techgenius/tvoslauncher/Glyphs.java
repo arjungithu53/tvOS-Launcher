@@ -420,6 +420,25 @@ final class Glyphs {
                 c.drawPath(path, p);
                 c.drawCircle(m, s * 0.42f, s * 0.10f, p);
                 break;
+            case "palette": {  // Look & feel: an artist's palette with a thumb hole and paint dots
+                p.setStrokeWidth(s * 0.075f);
+                path.moveTo(s * 0.52f, s * 0.13f);
+                path.cubicTo(s * 0.80f, s * 0.13f, s * 0.89f, s * 0.36f, s * 0.87f, s * 0.50f);
+                path.cubicTo(s * 0.85f, s * 0.64f, s * 0.72f, s * 0.62f, s * 0.64f, s * 0.64f);
+                path.cubicTo(s * 0.55f, s * 0.67f, s * 0.60f, s * 0.78f, s * 0.58f, s * 0.83f);
+                path.cubicTo(s * 0.55f, s * 0.89f, s * 0.42f, s * 0.89f, s * 0.32f, s * 0.84f);
+                path.cubicTo(s * 0.17f, s * 0.76f, s * 0.11f, s * 0.60f, s * 0.13f, s * 0.45f);
+                path.cubicTo(s * 0.16f, s * 0.25f, s * 0.33f, s * 0.13f, s * 0.52f, s * 0.13f);
+                path.close();
+                c.drawPath(path, p);
+                Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
+                dot.setColor(color);
+                c.drawCircle(s * 0.34f, s * 0.38f, s * 0.062f, dot);
+                c.drawCircle(s * 0.52f, s * 0.29f, s * 0.062f, dot);
+                c.drawCircle(s * 0.69f, s * 0.38f, s * 0.062f, dot);
+                c.drawCircle(s * 0.31f, s * 0.60f, s * 0.062f, dot);
+                break;
+            }
             case "cloud":  // Weather cloud
                 p.setStrokeWidth(s * 0.075f);
                 path.moveTo(s * 0.30f, s * 0.76f);

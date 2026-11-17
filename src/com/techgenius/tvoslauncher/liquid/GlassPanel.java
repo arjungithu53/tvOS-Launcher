@@ -83,22 +83,35 @@ public final class GlassPanel extends Drawable {
             + "uniform float radius;\n"
             + "uniform float bend;\n"
             + "uniform float band;\n"
+            + "uniform float zoom;\n"
+            + "uniform float shine;\n"
             + "half4 main(float2 p) {\n"
             + "  float2 c = size * 0.5;\n"
             + "  float2 pl = p - origin;\n"
             + "  float2 q = abs(pl - c) - (c - float2(radius));\n"
             + "  float d = length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - radius;\n"
+            // t: 0 in the flat middle, 1 at the rim. The glass is thickest-curved near the edge.
             + "  float t = clamp(1.0 + d / band, 0.0, 1.0);\n"
-            + "  float k = t * t * t;\n"
-            + "  float2 g = (q.x > 0.0 && q.y > 0.0) ? normalize(q) : ((q.x > q.y) ? float2(1.0, 0.0) : float2(0.0, 1.0));\n"
+            + "  float k = t * t * (3.0 - 2.0 * t);\n"
+            + "  k = k * k;\n"
+            // Smooth normal: treat the corners as if rounded by the band too, so there are no seams.
+            + "  float2 g = normalize(max(q + float2(max(band, radius) - radius), float2(0.001)));\n"
             + "  float2 n = sign(pl - c) * g;\n"
-            + "  float2 sp = p - n * bend * k;\n"
-            + "  float2 f = n * bend * k * 0.12;\n"
+            // A lens: the middle magnifies a little; the curved rim squeezes in the scene from just beyond the edge.
+            + "  float2 sp = origin + c + (pl - c) * zoom + n * bend * k;\n"
+            + "  float2 f = n * bend * k * 0.08;\n"
             + "  half m = half(mixv);\n"
             + "  half4 col = mix(img.eval(sp), blr.eval(sp), m);\n"
             + "  half r = mix(img.eval(sp - f).r, blr.eval(sp - f).r, m);\n"
             + "  half b = mix(img.eval(sp + f).b, blr.eval(sp + f).b, m);\n"
-            + "  return half4(r, col.g, b, 1.0);\n"
+            + "  half3 rgb = half3(r, col.g, b);\n"
+            // Specular: light from the top left catches the curved rim (and a little on the opposite side).
+            + "  float lit = max(dot(n, normalize(float2(-0.55, -0.85))), 0.0);\n"
+            + "  float back = max(dot(n, normalize(float2(0.55, 0.85))), 0.0);\n"
+            + "  float rim = smoothstep(0.55, 1.0, t);\n"
+            + "  float s = (pow(lit, 2.0) * 0.55 + pow(back, 3.0) * 0.22) * rim * shine;\n"
+            + "  rgb = rgb + half3(s);\n"
+            + "  return half4(rgb, 1.0);\n"
             + "}\n";
 
     private static boolean refractOn = true;
@@ -109,10 +122,10 @@ public final class GlassPanel extends Drawable {
         refractOn = on;
     }
 
-    /** Small and medium glass only: a full-height panel would cost too much GPU time on a TV chip. */
+    /** Up to about a third of the screen (the Control Panel); a full-screen sheet would cost too much GPU time. */
     private boolean useRefraction() {
         return refractOn && !refractBroken && android.os.Build.VERSION.SDK_INT >= 33 && look.refr > 0
-                && box.width() * box.height() <= screenW * (float) screenH * 0.12f;
+                && box.width() * box.height() <= screenW * (float) screenH * 0.35f;
     }
 
     /** Points the refraction program at this surface; false if it can't run (the ring lens is used then). */
@@ -132,9 +145,13 @@ public final class GlassPanel extends Drawable {
             rs.setFloatUniform("origin", box.left, box.top);
             rs.setFloatUniform("size", box.width(), box.height());
             rs.setFloatUniform("radius", Math.min(radius, Math.min(box.width(), box.height()) / 2f));
-            float band = Math.min(14f * density, Math.min(box.width(), box.height()) / 2.5f);
+            float min = Math.min(box.width(), box.height());
+            float k = look.refr / 100f;
+            float band = Math.min(64f * density, min * 0.42f);
             rs.setFloatUniform("band", band);
-            rs.setFloatUniform("bend", band * (0.35f + look.refr / 100f * 0.65f));
+            rs.setFloatUniform("bend", band * (0.15f + k * 0.55f));
+            rs.setFloatUniform("zoom", 1f - k * 0.07f);
+            rs.setFloatUniform("shine", 0.25f + look.rim / 100f * 0.75f);
             refractP.setShader(rs);
             refractP.setAlpha(sharpP.getAlpha());
             return true;

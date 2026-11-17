@@ -107,6 +107,7 @@ final class LiquidHome {
                 return true;
             });
             sh.weatherBtn.setVisibility(View.VISIBLE);
+            addStyleButton();
         }
         if (sh.dockLabel != null && sh.dockLabel.getLayoutParams() instanceof LinearLayout.LayoutParams) {
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) sh.dockLabel.getLayoutParams();
@@ -119,6 +120,33 @@ final class LiquidHome {
 
     int dp(float u) {
         return host.dp(u);
+    }
+
+    View styleBtn;
+
+    /** A palette button left of Search: opens Look & feel straight away. */
+    private void addStyleButton() {
+        if (!(sh.weatherBtn.getParent() instanceof LinearLayout)) return;
+        LinearLayout row = (LinearLayout) sh.weatherBtn.getParent();
+        int size = sh.weatherBtn.getLayoutParams().width;
+        LinearLayout b = new LinearLayout(host);
+        b.setGravity(Gravity.CENTER);
+        b.setBackground(glass(Liquid.BUTTONS, size / 2f));
+        b.setFocusable(true);
+        b.setClickable(true);
+        ImageView icon = new ImageView(host);
+        icon.setImageBitmap(Glyphs.get("palette", dp(20), 0xFFF4F4F6));
+        b.addView(icon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        b.setOnFocusChangeListener((v, has) -> {
+            v.setForeground(has ? ring(size / 2f) : null);
+            v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
+                    .setDuration(has ? 420 : 180).setInterpolator(has ? MainActivity.SPRING : MainActivity.EASE).start();
+        });
+        b.setOnClickListener(v -> control.showLookAndFeel(v));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+        lp.rightMargin = dp(10);
+        row.addView(b, row.indexOfChild(sh.weatherBtn), lp);
+        styleBtn = b;
     }
 
     void onResume() {
@@ -640,9 +668,7 @@ final class LiquidHome {
         ensureWindow(sh.focusedDockIdx);
         row.setClipChildren(false);
         if (row.getParent() instanceof ViewGroup) ((ViewGroup) row.getParent()).setClipChildren(false);
-        lens = new Lens();
-        if (row.getBackground() == null) row.setBackground(lens);
-        else lens = null;  // the row already paints something: leave it
+        lens = null;  // the gliding glow behind the dock is off: the shelf carries the look
         updateDots();
     }
 
@@ -701,8 +727,10 @@ final class LiquidHome {
         String mode = Liquid.magnify(host);
         boolean tilt = Liquid.tilt(host);
         // {lift, scale, extra margin each side} in design pixels of a 132 px icon
-        float[][] strong = {{26, 1.38f, 26}, {14, 1.2f, 13}, {6, 1.08f, 5}, {2, 1.02f, 1}};
-        float[][] subtle = {{16, 1.25f, 17}, {8, 1.1f, 7}, {3, 1.03f, 2}, {0, 1f, 0}};
+        // macOS-style: icons grow from their base on the shelf, neighbours less; extra margin keeps
+        // them from overlapping ((scale - 1) * 132 / 2 each side). Lift is only a small rise.
+        float[][] strong = {{8, 1.75f, 50}, {4, 1.42f, 28}, {1, 1.18f, 12}, {0, 1.05f, 3}};
+        float[][] subtle = {{5, 1.4f, 26}, {2, 1.2f, 13}, {0, 1.06f, 4}, {0, 1f, 0}};
         float[][] off = {{6, 1.12f, 8}, {0, 1f, 0}, {0, 1f, 0}, {0, 1f, 0}};
         float[][] curve = "off".equals(mode) ? off : "subtle".equals(mode) ? subtle : strong;
         float k = size / 132f;
@@ -716,15 +744,16 @@ final class LiquidHome {
             boolean focused = d == 0;
             t.animate().scaleX(c[1]).scaleY(c[1]).translationY(-c[0] * k)
                     .rotationX(focused && tilt ? 5f : 0f).rotationY(focused && tilt ? -6f : 0f)
-                    .setDuration(420).setInterpolator(MainActivity.SPRING).start();
+                    .setDuration(DOCK_MS).setInterpolator(DOCK_EASE).start();
             t.setForeground(focused ? new Shine(tilt, "tile".equals(Liquid.iconStyle(host))) : null);
             t.setZ(focused ? dp(4) : 0);
         }
         if (marginAnim != null) marginAnim.cancel();
         final float base = gap(size) / 2f;
         marginAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
-        marginAnim.setDuration(420);
-        marginAnim.setInterpolator(MainActivity.SPRING);
+        // Same timing and curve as the icons, with no overshoot, so nothing bounces.
+        marginAnim.setDuration(DOCK_MS);
+        marginAnim.setInterpolator(DOCK_EASE);
         marginAnim.addUpdateListener(a -> {
             float p = (float) a.getAnimatedValue();
             for (int i = 0; i < sh.dockTiles.size() && i < from.length; i++) {
@@ -746,6 +775,8 @@ final class LiquidHome {
     }
 
     private Lens lens;
+    private static final long DOCK_MS = 240;
+    private static final android.animation.TimeInterpolator DOCK_EASE = new android.view.animation.DecelerateInterpolator(1.8f);
 
     /**
      * The gliding lens: one soft glass glow behind the dock icons that slides to the focused icon
@@ -916,7 +947,7 @@ final class LiquidHome {
         if (sh.sheetLayer != null || sh.moveDockIdx >= 0) return false;
         View f = host.getCurrentFocus();
         boolean inDock = sh.dockTiles.contains(f);
-        boolean topBtn = f == sh.weatherBtn || f == sh.moonBtn;
+        boolean topBtn = f == sh.weatherBtn || f == sh.moonBtn || (styleBtn != null && f == styleBtn);
         int dashIdx = sh.dashboardCards.indexOf(f);
         if (dashIdx >= 0) {
             lastDashIdx = dashIdx;
