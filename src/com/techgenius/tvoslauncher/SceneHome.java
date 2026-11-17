@@ -181,6 +181,7 @@ final class SceneHome {
 
     /** A Liquid Glass surface for one part of the interface (Liquid.DOCK, BUTTONS, ...). */
     GlassPanel liquidGlass(String part, float radius) {
+        GlassPanel.setRefraction(Liquid.refraction(host));
         return new GlassPanel(liquidSource, Liquid.look(host, part), radius, host.screenW, host.screenH, host.unit, part);
     }
 

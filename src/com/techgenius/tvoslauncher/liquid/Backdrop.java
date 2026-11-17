@@ -7,12 +7,13 @@ import android.graphics.Rect;
 
 /**
  * The one sharp, small copy of the current wallpaper that every glass surface samples
- * (the blurred copy is the launcher's existing one). 384 × 216 pixels: about 0.3 MB.
+ * (the blurred copy is the launcher's existing one). 960 × 540 pixels (about 2 MB) so the
+ * refraction at glass edges stays crisp.
  */
 public final class Backdrop {
     private Backdrop() {}
 
-    public static final int W = 384, H = 216;
+    public static final int W = 960, H = 540;
     private static volatile Bitmap sharp;
 
     public static Bitmap sharp() {

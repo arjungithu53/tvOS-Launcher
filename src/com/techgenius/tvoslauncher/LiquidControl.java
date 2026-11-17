@@ -1258,6 +1258,12 @@ final class LiquidControl {
         header("Extras");
         toggle("Tilt and shine", "No extra memory", "t:tilt", () -> Liquid.tilt(c), v -> Liquid.putBool(c, "tilt", v), NONE);
         toggle("Weather on glass", "Rain and frost from the forecast", "t:wx", () -> Liquid.weatherFx(c), v -> Liquid.putBool(c, "weather_fx", v), WEATHER);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            toggle("Refraction", "Glass bends the scene at its edges", "t:refr", () -> Liquid.refraction(c), v -> {
+                Liquid.putBool(c, "refraction", v);
+                com.techgenius.tvoslauncher.liquid.GlassPanel.setRefraction(v);
+            }, GLASS);
+        }
         header("Screensaver");
         add(chips(new String[][]{{"drift", "Scene drift"}, {"clock", "Minimal clock"}, {"glass", "Liquid glass"}}, Liquid.saverStyle(c), "ss:", id -> {
             Liquid.putString(c, "saver_style", id);

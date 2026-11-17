@@ -67,6 +67,87 @@ public final class GlassPanel extends Drawable {
     private final Paint fxP = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Path clipPath = new android.graphics.Path();
 
+    // ---------------------------------------------------------------- refraction (Android 13+)
+
+    /**
+     * Thick-glass refraction: the scene under the glass is pulled outward near the rounded edge,
+     * with a hint of colour fringing. One GPU program reading the shared wallpaper copy: no extra
+     * images per panel and nothing new per frame.
+     */
+    private static final String REFRACT_AGSL =
+            "uniform shader img;\n"
+            + "uniform shader blr;\n"
+            + "uniform float mixv;\n"
+            + "uniform float2 origin;\n"
+            + "uniform float2 size;\n"
+            + "uniform float radius;\n"
+            + "uniform float bend;\n"
+            + "uniform float band;\n"
+            + "half4 main(float2 p) {\n"
+            + "  float2 c = size * 0.5;\n"
+            + "  float2 pl = p - origin;\n"
+            + "  float2 q = abs(pl - c) - (c - float2(radius));\n"
+            + "  float d = length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - radius;\n"
+            + "  float t = clamp(1.0 + d / band, 0.0, 1.0);\n"
+            + "  float k = t * t * t;\n"
+            + "  float2 g = (q.x > 0.0 && q.y > 0.0) ? normalize(q) : ((q.x > q.y) ? float2(1.0, 0.0) : float2(0.0, 1.0));\n"
+            + "  float2 n = sign(pl - c) * g;\n"
+            + "  float2 sp = p - n * bend * k;\n"
+            + "  float2 f = n * bend * k * 0.12;\n"
+            + "  half m = half(mixv);\n"
+            + "  half4 col = mix(img.eval(sp), blr.eval(sp), m);\n"
+            + "  half r = mix(img.eval(sp - f).r, blr.eval(sp - f).r, m);\n"
+            + "  half b = mix(img.eval(sp + f).b, blr.eval(sp + f).b, m);\n"
+            + "  return half4(r, col.g, b, 1.0);\n"
+            + "}\n";
+
+    private static boolean refractOn = true;
+    private static boolean refractBroken;
+    private Object refractSh;  // android.graphics.RuntimeShader, created on Android 13+
+
+    public static void setRefraction(boolean on) {
+        refractOn = on;
+    }
+
+    /** Small and medium glass only: a full-height panel would cost too much GPU time on a TV chip. */
+    private boolean useRefraction() {
+        return refractOn && !refractBroken && android.os.Build.VERSION.SDK_INT >= 33 && look.refr > 0
+                && box.width() * box.height() <= screenW * (float) screenH * 0.12f;
+    }
+
+    /** Points the refraction program at this surface; false if it can't run (the ring lens is used then). */
+    private boolean prepareRefraction() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return false;
+        try {
+            android.graphics.RuntimeShader rs = (android.graphics.RuntimeShader) refractSh;
+            if (rs == null) {
+                rs = new android.graphics.RuntimeShader(REFRACT_AGSL);
+                refractSh = rs;
+            }
+            // Again each time: the wallpaper copies' placement changes.
+            rs.setInputShader("img", sharpSh);
+            boolean hasBlur = blurSh != null && blurFor != null && !blurFor.isRecycled();
+            rs.setInputShader("blr", hasBlur ? blurSh : sharpSh);
+            rs.setFloatUniform("mixv", hasBlur ? Math.min(1f, look.blur / 70f) : 0f);
+            rs.setFloatUniform("origin", box.left, box.top);
+            rs.setFloatUniform("size", box.width(), box.height());
+            rs.setFloatUniform("radius", Math.min(radius, Math.min(box.width(), box.height()) / 2f));
+            float band = Math.min(14f * density, Math.min(box.width(), box.height()) / 2.5f);
+            rs.setFloatUniform("band", band);
+            rs.setFloatUniform("bend", band * (0.35f + look.refr / 100f * 0.65f));
+            refractP.setShader(rs);
+            refractP.setAlpha(sharpP.getAlpha());
+            return true;
+        } catch (Throwable t) {
+            refractBroken = true;
+            android.util.Log.w("tvOSGlass", "refraction off: " + t);
+            return false;
+        }
+    }
+
+    private final Paint refractP = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private boolean refractReady;
+
     /** The part this surface belongs to (Liquid.DOCK, ...), or null for one-off looks. */
     public String part;
     private static final java.util.List<java.lang.ref.WeakReference<GlassPanel>> LIVE = new java.util.ArrayList<>();
@@ -113,6 +194,7 @@ public final class GlassPanel extends Drawable {
         blurP.setAlpha(Math.round(255 * amount * Math.min(1f, look.blur / 70f)));
         lensP.setAlpha(Math.round(255 * amount * Math.min(1f, 0.25f + look.refr / 100f * 0.75f)));
         rebuildGradients();
+        refractReady = false;
         invalidateSelf();
     }
 
@@ -143,6 +225,7 @@ public final class GlassPanel extends Drawable {
     @Override protected void onBoundsChange(Rect b) {
         box.set(b);
         placedW = -1;
+        refractReady = false;
         rebuildGradients();
     }
 
@@ -175,6 +258,7 @@ public final class GlassPanel extends Drawable {
             }
             place(sharpSh, sharp, 1f);
             place(lensSh, sharp, 1f + look.refr / 100f * 0.08f);
+            refractReady = false;
         }
         if (blur != null && (blur != blurFor || moved)) {
             if (blur != blurFor) {
@@ -183,6 +267,7 @@ public final class GlassPanel extends Drawable {
                 blurFor = blur;
             }
             place(blurSh, blur, 1f);
+            refractReady = false;
         }
         placedX = loc[0];
         placedY = loc[1];
@@ -191,9 +276,11 @@ public final class GlassPanel extends Drawable {
 
         float r = radius;
         if (sharp != null) {
-            c.drawRoundRect(box, r, r, sharpP);
-            if (blur != null && blurP.getAlpha() > 0) c.drawRoundRect(box, r, r, blurP);
-            float lw = lensP.getStrokeWidth();
+            boolean refract = useRefraction() && (refractReady || (refractReady = prepareRefraction()));
+            c.drawRoundRect(box, r, r, refract ? refractP : sharpP);
+            // The refraction program already blends in the blurred copy.
+            if (!refract && blur != null && blurP.getAlpha() > 0) c.drawRoundRect(box, r, r, blurP);
+            float lw = refract ? 0f : lensP.getStrokeWidth();
             if (lw > 0.5f) {
                 ring.set(box.left + lw / 2, box.top + lw / 2, box.right - lw / 2, box.bottom - lw / 2);
                 c.drawRoundRect(ring, Math.max(0, r - lw / 2), Math.max(0, r - lw / 2), lensP);

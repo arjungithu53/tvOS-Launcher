@@ -226,6 +226,11 @@ public final class Liquid {
     }
 
     /** Rain and frost on the glass, from the forecast. */
+    /** Glass bends the scene at its edges (Android 13+, small and medium glass only). */
+    public static boolean refraction(Context c) {
+        return prefs(c).getBoolean("refraction", true);
+    }
+
     public static boolean weatherFx(Context c) {
         return prefs(c).getBoolean("weather_fx", true);
     }
