@@ -249,6 +249,7 @@ final class SceneHome {
 
     /** @param returnedFrom package of the app the launcher opened before this resume, or null. */
     void onWatchPopupsResume(String returnedFrom) {
+        if (liquid != null) return;  // the pop-ups aren't part of Liquid Glass: no account syncs
         // Home pressed / launcher resumed: rows reappear in place, without the entrance slide.
         suppressCwAnimUntil = android.os.SystemClock.uptimeMillis() + 700L;
         for (WatchPopup p : watchPopups) p.onLauncherResume(returnedFrom != null && p.owns(returnedFrom));
@@ -764,6 +765,10 @@ final class SceneHome {
 
     void refreshKeepWatching() {
         if (shelfRow == null) return;
+        if (liquid != null) {  // not shown in Liquid Glass: don't load cards or download their pictures
+            pkgWatchCache.clear();
+            return;
+        }
         shelfHeader.setText(I18n.s(host, "Continue watching", "İzlemeye devam et"));
         if (!host.cwEnabled() || moreExpanded) {
             pkgWatchCache.clear();

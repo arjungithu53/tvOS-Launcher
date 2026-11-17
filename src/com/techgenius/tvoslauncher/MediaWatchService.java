@@ -61,7 +61,7 @@ public class MediaWatchService extends NotificationListenerService {
             }
             try {
                 android.os.PowerManager pm = trackedAppCtx.getSystemService(android.os.PowerManager.class);
-                if (pm == null || pm.isInteractive()) {
+                if ((pm == null || pm.isInteractive()) && !com.techgenius.tvoslauncher.liquid.Liquid.isOn(trackedAppCtx)) {
                     pollActiveSessionsImmediate(trackedAppCtx);
                 }
             } catch (Throwable ignored) {
@@ -295,6 +295,7 @@ public class MediaWatchService extends NotificationListenerService {
 
         static synchronized void record(Context c, String pkg, MediaMetadata m, PlaybackState s, CharSequence queueTitle) {
             if (pkg == null || pkg.equals(c.getPackageName())) return;
+            if (com.techgenius.tvoslauncher.liquid.Liquid.isOn(c)) return;  // Continue Watching isn't shown
             String title = "";
             String sub = "";
             long dur = 0L;

@@ -31,6 +31,8 @@ final class AppShots {
     static final int W = 480, H = 270;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile long lastShot;
+    /** One worker for every screenshot (a new executor per shot left an idle thread behind each time). */
+    private static final java.util.concurrent.ExecutorService SHOT = java.util.concurrent.Executors.newSingleThreadExecutor();
     private static volatile boolean busy;
 
     private static File dir(Context c) {
@@ -77,7 +79,7 @@ final class AppShots {
         busy = true;
         final Context app = svc.getApplicationContext();
         try {
-            svc.takeScreenshot(android.view.Display.DEFAULT_DISPLAY, java.util.concurrent.Executors.newSingleThreadExecutor(),
+            svc.takeScreenshot(android.view.Display.DEFAULT_DISPLAY, SHOT,
                     new android.accessibilityservice.AccessibilityService.TakeScreenshotCallback() {
                         @Override public void onSuccess(android.accessibilityservice.AccessibilityService.ScreenshotResult res) {
                             try {

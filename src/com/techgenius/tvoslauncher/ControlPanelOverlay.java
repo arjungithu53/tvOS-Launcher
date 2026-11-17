@@ -152,6 +152,9 @@ public final class ControlPanelOverlay {
         return null;
     }
 
+    /** One worker for the live-blur screenshots (was a new, never-ending thread per screenshot). */
+    private static final java.util.concurrent.ExecutorService BLUR_EXEC = java.util.concurrent.Executors.newSingleThreadExecutor();
+
     private static void captureLiveScreenBlurAsync(
             android.accessibilityservice.AccessibilityService svc,
             final int screenW,
@@ -164,7 +167,7 @@ public final class ControlPanelOverlay {
         try {
             svc.takeScreenshot(
                     android.view.Display.DEFAULT_DISPLAY,
-                    java.util.concurrent.Executors.newSingleThreadExecutor(),
+                    BLUR_EXEC,
                     new android.accessibilityservice.AccessibilityService.TakeScreenshotCallback() {
                         @Override
                         public void onSuccess(android.accessibilityservice.AccessibilityService.ScreenshotResult res) {
