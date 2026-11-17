@@ -1276,7 +1276,7 @@ final class LiquidHome {
         pendingControlPanel = true;
         pendingRecent = target;
         try {
-            c.startActivity(new android.content.Intent(c, MainActivity.class)
+            c.startActivity(MainActivity.homeIntent(c)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
         } catch (Throwable ignored) {
         }

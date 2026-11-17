@@ -104,6 +104,17 @@ public class MainActivity extends Activity {
     static final android.view.animation.OvershootInterpolator LIFT =
             new android.view.animation.OvershootInterpolator(1.3f);
 
+    /** Starts this launcher as the Home activity (an explicit start can open a second copy). */
+    public static Intent homeIntent(Context c) {
+        return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .setClassName(c.getPackageName(), MainActivity.class.getName());
+    }
+
+    static boolean isHomeIntent(Intent i) {
+        return i != null && Intent.ACTION_MAIN.equals(i.getAction()) && i.getCategories() != null
+                && i.getCategories().contains(Intent.CATEGORY_HOME);
+    }
+
     static class AppEntry {
         String key, pkg, label, defaultLabel;
         Drawable banner, icon;
@@ -252,6 +263,24 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // One Home only. An explicit start used to open a second copy in its own task, doubling
+        // the wallpaper, views and window buffers. Hand such a start to Home, or retire the stray copy.
+        MainActivity other = activeInstance;
+        if (other != null && other != this && !other.isFinishing() && !other.isDestroyed()
+                && other.getTaskId() != getTaskId()) {
+            if (!isHomeIntent(getIntent())) {
+                Intent fwd = homeIntent(this);
+                if (getIntent() != null && getIntent().getExtras() != null) fwd.putExtras(getIntent().getExtras());
+                fwd.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                try {
+                    startActivity(fwd);
+                } catch (Throwable ignored) {
+                }
+                finish();
+                return;
+            }
+            other.finish();
+        }
         activeInstance = this;
         // The wallpaper/artwork always covers the screen: skip the window's own full-screen fill
         // (this Mali-450 GPU is fill-rate bound, so every hidden full-screen layer costs frames).
@@ -328,7 +357,7 @@ public class MainActivity extends Activity {
                 if (resumed) {
                     showProfilePicker(true);
                 } else {
-                    startActivity(new Intent(c, MainActivity.class).putExtra("pick_profile", true)
+                    startActivity(MainActivity.homeIntent(c).putExtra("pick_profile", true)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 }
             }
@@ -4866,7 +4895,7 @@ public class MainActivity extends Activity {
             return;
         }
         try {
-            Intent i = new Intent(c, MainActivity.class)
+            Intent i = MainActivity.homeIntent(c)
                     .putExtra("panel", "ambient")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             c.startActivity(i);
@@ -4880,7 +4909,7 @@ public class MainActivity extends Activity {
             return;
         }
         try {
-            Intent i = new Intent(c, MainActivity.class)
+            Intent i = MainActivity.homeIntent(c)
                     .putExtra("panel", "lock")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             c.startActivity(i);

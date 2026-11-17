@@ -1190,7 +1190,7 @@ public class PowerService extends AccessibilityService {
             Runnable r = onDone;
             onDone = null;
             if (c != null) {
-                c.startActivity(new Intent(c, MainActivity.class)
+                c.startActivity(MainActivity.homeIntent(c)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
             }
             if (r != null) r.run();

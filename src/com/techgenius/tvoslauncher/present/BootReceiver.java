@@ -75,7 +75,7 @@ public class BootReceiver extends BroadcastReceiver {
         if (context == null) return;
         try {
             Context launchCtx = com.techgenius.tvoslauncher.PowerService.getActiveContextOr(context);
-            Intent i = new Intent(launchCtx, MainActivity.class);
+            Intent i = MainActivity.homeIntent(launchCtx);
             i.setAction(Intent.ACTION_MAIN);
             i.addCategory(Intent.CATEGORY_HOME);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK

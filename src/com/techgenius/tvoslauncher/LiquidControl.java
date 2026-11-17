@@ -396,7 +396,7 @@ final class LiquidControl {
             if (ovLayer != null) {
                 closeNow();
                 LiquidHome.pendingSaver = true;
-                startOutside(new Intent(host, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+                startOutside(MainActivity.homeIntent(host).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
                 return;
             }
             sh.closeSheetImmediate();

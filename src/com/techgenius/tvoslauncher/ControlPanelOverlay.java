@@ -99,7 +99,7 @@ public final class ControlPanelOverlay {
                 // Fall back to MainActivity panel
             }
         }
-        Intent i = new Intent(c, MainActivity.class)
+        Intent i = MainActivity.homeIntent(c)
                 .putExtra("panel", "cc")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         try {
@@ -544,7 +544,7 @@ public final class ControlPanelOverlay {
                             m.sceneHome.liquid.showNotifications(null);
                         } else {
                             LiquidHome.pendingNotifications = true;
-                            Intent home = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                            Intent home = MainActivity.homeIntent(c).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                             try {
                                 c.startActivity(home);
                             } catch (Throwable ignored) {
@@ -791,7 +791,7 @@ public final class ControlPanelOverlay {
         if (showWeatherOverlay(c)) {
             return;
         }
-        Intent i = new Intent(c, MainActivity.class)
+        Intent i = MainActivity.homeIntent(c)
                 .putExtra("panel", "weather")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         try {
@@ -1717,7 +1717,7 @@ public final class ControlPanelOverlay {
         final Context hostCtx = PowerService.instance != null ? PowerService.instance
                 : (MainActivity.activeInstance != null && MainActivity.activeInstance.resumed ? MainActivity.activeInstance : c);
         if (!(hostCtx instanceof PowerService) && !(hostCtx instanceof android.app.Activity)) {
-            Intent i = new Intent(c, MainActivity.class)
+            Intent i = MainActivity.homeIntent(c)
                     .putExtra("panel", "inputs")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             try {

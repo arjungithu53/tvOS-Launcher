@@ -933,7 +933,7 @@ public final class AppUpdater {
             if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
                 try {
                     cleanupUpdatesFolderOnStartup(context);
-                    Intent launch = new Intent(context, MainActivity.class);
+                    Intent launch = MainActivity.homeIntent(context);
                     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                     context.startActivity(launch);
                 } catch (Throwable ignored) {
