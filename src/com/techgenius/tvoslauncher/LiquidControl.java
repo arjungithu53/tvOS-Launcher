@@ -361,8 +361,8 @@ final class LiquidControl {
             ControlPanelOverlay.openBluetoothSettings(c);
         }));
         tiles.add(tile(grid, "present", "Picture", () -> "Settings", () -> false, t -> {
-            close();
-            if (!Suggestions.start(host, new Intent("android.settings.DISPLAY_SETTINGS"))) host.startSafe(new Intent(Settings.ACTION_SETTINGS));
+            closeNow();
+            Backlight.openPicture(host);  // the TV's own picture screen: backlight, colour, sharpness
         }));
         tiles.add(tile(grid, "timer", "Sleep timer", () -> ControlPanelOverlay.timerState(c), () -> SleepReceiver.timerLeft(c) > 0, t -> {
             ControlPanelOverlay.cycleSleepTimer(c);
@@ -399,6 +399,32 @@ final class LiquidControl {
         sll.topMargin = dp(15);
         col.addView(sl, sll);
         AudioManager am = (AudioManager) host.getSystemService(Context.AUDIO_SERVICE);
+        // Backlight: the TV's real backlight through its picture slices. Until it's read (and if
+        // the TV doesn't offer it), Left/Right open the TV's picture screen instead.
+        final int[] bl = {-1};
+        final long[] blSent = {0};
+        final Runnable[] blRefresh = {null};
+        blRefresh[0] = slider(sl, "Backlight", "ambient", () -> Math.max(0, bl[0]), v -> {
+            if (bl[0] < 0) {
+                closeNow();
+                Backlight.openPicture(host);
+                return;
+            }
+            bl[0] = v;
+            final long stamp = ++blSent[0];
+            // Send only the last value of a quick run of presses.
+            host.handler.postDelayed(() -> {
+                if (stamp != blSent[0]) return;
+                host.io.execute(() -> Backlight.set(host, v));
+            }, 180);
+        });
+        host.io.execute(() -> {
+            int v = Backlight.read(host);
+            host.handler.post(() -> {
+                bl[0] = v;
+                if (blRefresh[0] != null) blRefresh[0].run();
+            });
+        });
         slider(sl, "Volume", "audio", () -> {
             if (am == null) return 0;
             int max = Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
@@ -502,7 +528,7 @@ final class LiquidControl {
     }
 
     /** A focusable slider row: Left/Right change it by 10. */
-    private void slider(LinearLayout parent, String label, String glyph, java.util.function.IntSupplier get, IntConsumer set) {
+    private Runnable slider(LinearLayout parent, String label, String glyph, java.util.function.IntSupplier get, IntConsumer set) {
         FrameLayout box = new FrameLayout(host);
         box.setPadding(dp(14), 0, dp(14), 0);
         TextView cap = caps(label);
@@ -554,6 +580,7 @@ final class LiquidControl {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58));
         if (parent.getChildCount() > 0) lp.topMargin = dp(6);
         parent.addView(box, lp);
+        return refresh;
     }
 
     private final class Bar extends android.graphics.drawable.Drawable {
