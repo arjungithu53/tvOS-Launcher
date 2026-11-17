@@ -135,7 +135,9 @@ final class Backlight {
             String v = SliceItem.FORMAT_TEXT.equals(it.getFormat()) ? String.valueOf(it.getText())
                     : SliceItem.FORMAT_INT.equals(it.getFormat()) ? String.valueOf(it.getInt()) : "";
             Log.i(TAG, "  ".repeat(depth + 1) + it.getFormat() + "/" + it.getSubType() + " " + it.getHints() + " " + v);
-            if (it.getSlice() != null) dump(it.getSlice(), depth + 1);
+            // getSlice() only works on slice and action items (others throw).
+            boolean nested = SliceItem.FORMAT_SLICE.equals(it.getFormat()) || SliceItem.FORMAT_ACTION.equals(it.getFormat());
+            if (nested && it.getSlice() != null) dump(it.getSlice(), depth + 1);
         }
     }
 
